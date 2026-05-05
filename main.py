@@ -33,6 +33,16 @@ x = []
 y = []
 
 
+try:
+    _ = plux.SignalsDev
+except AttributeError:
+    # Downloading the lib file directly is possible but wouldn't respect the principle of least astonishment.
+    print(
+        f"error: plux lib file is missing, make sure to download it at https://github.com/pluxbiosignals/python-samples/tree/master/PLUX-API-Python3/{osDic[platform.system()]}"
+    )
+    exit(1)
+
+
 class NewDevice(plux.SignalsDev):
     def __init__(self, address: str):
         plux.SignalsDev.__init__(address)
