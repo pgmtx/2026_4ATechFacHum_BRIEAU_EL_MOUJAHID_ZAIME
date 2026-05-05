@@ -1,15 +1,17 @@
 import platform
 import sys
-import plux
-import matplotlib.pyplot as plt
 
+import matplotlib.pyplot as plt
+import plux
+
+python_version = platform.python_version()
 osDic = {
-    "Darwin": f"MacOS/Intel{''.join(platform.python_version().split('.')[:2])}",
+    "Darwin": f"MacOS/Intel{''.join(python_version.split('.')[:2])}",
     "Linux": "Linux64",
-    "Windows": f"Win{platform.architecture()[0][:2]}_{''.join(platform.python_version().split('.')[:2])}",
+    "Windows": f"Win{platform.architecture()[0][:2]}_{''.join(python_version.split('.')[:2])}",
 }
 
-if platform.mac_ver()[0] != "":
+if sys.platform == "darwin":
     import subprocess
     from os import linesep
 
@@ -18,29 +20,27 @@ if platform.mac_ver()[0] != "":
     if result.startswith("12."):
         print("macOS version is Monterrey!")
         osDic["Darwin"] = "MacOS/Intel310"
-        if (
-            int(platform.python_version().split(".")[0]) <= 3
-            and int(platform.python_version().split(".")[1]) < 10
-        ):
-            print(f"Python version required is ≥ 3.10. Installed is {platform.python_version()}")
-            exit()
+
+        if (sys.version_info.major, sys.version_info.minor) < (3, 10):
+            print(f"Python version required is ≥ 3.10. Installed is {python_version}")
+            exit(1)
 
 
-sys.path.append(f"PLUX-API-Python3/{osDic[platform.system()]}")
+# sys.path.append(f"PLUX-API-Python3/{osDic[platform.system()]}")
 
 
 x = []
 y = []
 
+
 class NewDevice(plux.SignalsDev):
     def __init__(self, address: str):
         plux.SignalsDev.__init__(address)
 
-
-    def onRawFrame(self, nSeq, data):  # onRawFrame takes three arguments
-        if nSeq % (self.frequency / 10) == 0:
+    def onRawFrame(self, nSeq, data):
+        if nSeq % (self.frequency // 10) == 0:
             # print(f"{nSeq:03} :", *data)
-            x.append(len(x)+1)
+            x.append(len(x) + 1)
             y.append(data[0])
             print(nSeq, data[0])
 
@@ -50,13 +50,10 @@ class NewDevice(plux.SignalsDev):
         return nSeq > self.duration * self.frequency
 
 
-# Example routines
-
-
 def exampleAcquisition(
     address: str,
-    duration=30,
-    frequency=100,
+    duration: int = 30,
+    frequency: int = 100,
     active_ports=[5],
 ):  # time acquisition for each frequency
     """
@@ -65,9 +62,9 @@ def exampleAcquisition(
 
     print("Démarrage")
     device = NewDevice(address)
-    device.duration = int(duration)  # Duration of acquisition in seconds.
-    device.frequency = int(frequency)  # Samples per second.
-    
+    device.duration = duration  # Duration of acquisition in seconds.
+    device.frequency = frequency  # Samples per second.
+
     print("start")
 
     # Trigger the start of the data recording: https://www.downloads.plux.info/apis/PLUX-API-Python-Docs/classplux_1_1_signals_dev.html#a028eaf160a20a53b3302d1abd95ae9f1
@@ -81,6 +78,6 @@ def exampleAcquisition(
     device.stop()
     device.close()
 
+
 if __name__ == "__main__":
-    # Use arguments from the terminal (if any) as the first arguments and use the remaining default values.
     exampleAcquisition("98:D3:11:FE:03:67")
