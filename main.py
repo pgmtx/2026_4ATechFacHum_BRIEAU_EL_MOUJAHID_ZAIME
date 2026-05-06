@@ -28,9 +28,12 @@ if sys.platform == "darwin":
 
 # sys.path.append(f"PLUX-API-Python3/{osDic[platform.system()]}")
 
+plt.ion()
+fig, ax = plt.subplots()
 
 x = []
 y = []
+(line,) = ax.plot(x, y, color="tab:blue")
 
 
 try:
@@ -54,15 +57,18 @@ class NewDevice(plux.SignalsDev):
             y.append(data[0])
             print(nSeq, data[0])
 
-            plt.plot(x, y)
-            plt.pause(0.05)
+            # plt.plot(x, y)
+            line.set_data(x, y)
+            ax.relim()
+            ax.autoscale_view()
+            plt.pause(0.01)
 
         return nSeq > self.duration * self.frequency
 
 
 def exampleAcquisition(
     address: str,
-    duration: int = 30,
+    duration: int = 10,
     frequency: int = 100,
     active_ports=[5],
 ):  # time acquisition for each frequency
