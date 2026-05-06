@@ -89,7 +89,10 @@ def exampleAcquisition(
     print("loop")
     device.loop()  # calls device.onRawFrame until it returns True
 
-    plt.show()
+    plt.title(f"Graphe de la force reçue par le capteur sur {duration} s")
+    plt.xlabel("Temps (en s)")
+    plt.ylabel("Force")
+    plt.show(block=True)
 
     device.stop()
     device.close()
