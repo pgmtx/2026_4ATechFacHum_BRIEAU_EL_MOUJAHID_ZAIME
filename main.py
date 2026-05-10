@@ -3,6 +3,7 @@ import sys
 
 import matplotlib.pyplot as plt
 import plux
+import pygame
 
 python_version = platform.python_version()
 osDic = {
@@ -28,12 +29,12 @@ if sys.platform == "darwin":
 
 # sys.path.append(f"PLUX-API-Python3/{osDic[platform.system()]}")
 
-plt.ion()
-fig, ax = plt.subplots()
+# plt.ion()
+# fig, ax = plt.subplots()
 
-x = []
-y = []
-(line,) = ax.plot(x, y, color="tab:blue")
+# x = []
+# y = []
+# (line,) = ax.plot(x, y, color="tab:blue")
 
 
 try:
@@ -99,4 +100,20 @@ def exampleAcquisition(
 
 
 if __name__ == "__main__":
-    exampleAcquisition("98:D3:11:FE:03:67")
+    # exampleAcquisition("98:D3:11:FE:03:67")
+
+    pygame.init()
+
+    screen = pygame.display.set_mode((400, 300))
+    pygame.display.set_caption("Chunkymemo")
+
+    is_running = True
+    while is_running:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                is_running = False
+
+        screen.fill("#014F84")
+        pygame.display.flip()
+
+    pygame.quit()
