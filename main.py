@@ -104,8 +104,20 @@ if __name__ == "__main__":
 
     pygame.init()
 
-    screen = pygame.display.set_mode((400, 300))
-    pygame.display.set_caption("Chunkymemo")
+    info = pygame.display.Info()
+    width, height = info.current_w, info.current_h
+    fps = 60
+    game_title = "Chunkymemo"
+
+    screen = pygame.display.set_mode((width, height), pygame.NOFRAME)
+    pygame.display.set_caption(game_title)
+
+    clock = pygame.time.Clock()
+    default_font_name = pygame.font.get_default_font()
+    title_font = pygame.font.Font(default_font_name, 72)
+    title = title_font.render(game_title.upper(), True, "white")
+    title_rect = title.get_rect()
+    title_rect.center = (width // 2, height // 5)
 
     is_running = True
     while is_running:
@@ -114,6 +126,10 @@ if __name__ == "__main__":
                 is_running = False
 
         screen.fill("#014F84")
+
+        screen.blit(title, title_rect)
+
         pygame.display.flip()
+        clock.tick(fps)
 
     pygame.quit()
