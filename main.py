@@ -99,6 +99,23 @@ def exampleAcquisition(
     device.close()
 
 
+def draw_button(screen: pygame.Surface, text: pygame.Surface, rect: pygame.Rect):
+    padding_x = 16
+    padding_y = 8
+
+    pygame.draw.rect(
+        screen,
+        "white",
+        pygame.Rect(
+            rect.x - padding_x,
+            rect.y - padding_y,
+            rect.w + padding_x * 2,
+            rect.h + padding_y * 2,
+        ),
+    )
+    screen.blit(text, rect)
+
+
 if __name__ == "__main__":
     # exampleAcquisition("98:D3:11:FE:03:67")
 
@@ -120,10 +137,17 @@ if __name__ == "__main__":
     title_rect = title.get_rect()
     title_rect.center = (width // 2, height // 5)
 
+    button_padding_x, button_padding_y = (16, 8)
+
     button_font = pygame.font.Font(font_name, 36)
-    play = button_font.render("Play", True, "#014F84", "white")
+
+    play = button_font.render("Jouer", True, "#014F84")
     play_rect = play.get_rect()
     play_rect.center = (width // 2, height // 2)
+
+    quit = button_font.render("Quitter", True, "#014F84")
+    quit_rect = quit.get_rect()
+    quit_rect.center = (width // 2, height * 3 // 4)
 
     is_running = True
     while is_running:
@@ -134,7 +158,9 @@ if __name__ == "__main__":
         screen.fill("#014F84")
 
         screen.blit(title, title_rect)
-        screen.blit(play, play_rect)
+
+        draw_button(screen, play, play_rect)
+        draw_button(screen, quit, quit_rect)
 
         pygame.display.flip()
         clock.tick(fps)
