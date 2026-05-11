@@ -99,21 +99,51 @@ def exampleAcquisition(
     device.close()
 
 
-def draw_button(screen: pygame.Surface, text: pygame.Surface, rect: pygame.Rect):
-    padding_x = 16
-    padding_y = 8
+scale = -1
+
+
+def draw_button(
+    screen: pygame.Surface, text: pygame.Surface, rect: pygame.Rect, button_height: int
+):
+    button_width = int(255 * scale)
 
     pygame.draw.rect(
         screen,
         "white",
         pygame.Rect(
-            rect.x - padding_x,
-            rect.y - padding_y,
-            rect.w + padding_x * 2,
-            rect.h + padding_y * 2,
+            rect.center[0] - button_width // 2,
+            rect.y - button_height // 4,
+            button_width,
+            button_height,
         ),
+        border_radius=5,
     )
     screen.blit(text, rect)
+
+
+def create_buttons(title_bottom: int, button_height: int):
+    button_text_size = int(36 * scale)
+    button_font = pygame.font.Font(font_name, button_text_size)
+
+    gap = int(32 * scale)
+    margin = int(40 * scale)
+    button_names = ("Jouer", "Tutoriel", "Calibration", "Quitter")
+    total_height = len(button_names) * (button_height + gap) - gap
+    start_y = (
+        title_bottom + margin + (height - title_bottom - margin - total_height) // 2
+    )
+
+    buttons = {}
+    for i, name in enumerate(button_names):
+        text = button_font.render(name, True, "#014F84")
+        text_rect = text.get_rect()
+        text_rect.center = (
+            width // 2,
+            start_y + i * (button_height + gap),
+        )
+        buttons[name] = (text, text_rect)
+
+    return buttons
 
 
 if __name__ == "__main__":
@@ -121,33 +151,41 @@ if __name__ == "__main__":
 
     pygame.init()
 
-    info = pygame.display.Info()
-    width, height = info.current_w, info.current_h
     fps = 60
     game_title = "Chunkymemo"
 
-    screen = pygame.display.set_mode((width, height), pygame.NOFRAME)
+    ref_width, ref_height = 1280, 720
+
+    is_windowed = len(sys.argv) > 1 and sys.argv[1] == "--windowed"
+    width, height = ref_width, ref_height
+    flags = 0
+
+    if not is_windowed:
+        info = pygame.display.Info()
+        width, height = info.current_w, info.current_h
+        flags = pygame.NOFRAME
+
+    scale_x = width / ref_width
+    scale_y = height / ref_height
+    scale = min(width / ref_width, height / ref_height)
+
+    # Otherwise texts and buttons look way too big
+    scale = min(scale, 1.5)
+
+    screen = pygame.display.set_mode((width, height), flags)
     pygame.display.set_caption(game_title)
 
     clock = pygame.time.Clock()
     font_name = pygame.font.get_default_font()
 
-    title_font = pygame.font.Font(font_name, 72)
+    title_size = int(72 * scale)
+    title_font = pygame.font.Font(font_name, title_size)
     title = title_font.render(game_title.upper(), True, "white")
     title_rect = title.get_rect()
     title_rect.center = (width // 2, height // 5)
 
-    button_padding_x, button_padding_y = (16, 8)
-
-    button_font = pygame.font.Font(font_name, 36)
-
-    play = button_font.render("Jouer", True, "#014F84")
-    play_rect = play.get_rect()
-    play_rect.center = (width // 2, height // 2)
-
-    quit = button_font.render("Quitter", True, "#014F84")
-    quit_rect = quit.get_rect()
-    quit_rect.center = (width // 2, height * 3 // 4)
+    button_height = int(76 * scale)
+    buttons = create_buttons(title_rect.bottom, button_height)
 
     is_running = True
     while is_running:
@@ -159,8 +197,8 @@ if __name__ == "__main__":
 
         screen.blit(title, title_rect)
 
-        draw_button(screen, play, play_rect)
-        draw_button(screen, quit, quit_rect)
+        for text, text_rect in buttons.values():
+            draw_button(screen, text, text_rect, button_height)
 
         pygame.display.flip()
         clock.tick(fps)
