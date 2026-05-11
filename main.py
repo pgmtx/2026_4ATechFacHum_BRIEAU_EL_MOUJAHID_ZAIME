@@ -106,16 +106,23 @@ def draw_button(
     screen: pygame.Surface, text: pygame.Surface, rect: pygame.Rect, button_height: int
 ):
     button_width = int(255 * scale)
+    rect_to_draw = pygame.Rect(
+        rect.center[0] - button_width // 2,
+        rect.y - button_height // 4,
+        button_width,
+        button_height,
+    )
+    is_hovered = rect_to_draw.collidepoint(pygame.mouse.get_pos())
+
+    left_clicked, _, _ = pygame.mouse.get_pressed()
+    color = "white"
+    if is_hovered:
+        color = "#D6EFFE" if left_clicked else "#E8F4FF"
 
     pygame.draw.rect(
         screen,
-        "white",
-        pygame.Rect(
-            rect.center[0] - button_width // 2,
-            rect.y - button_height // 4,
-            button_width,
-            button_height,
-        ),
+        color,
+        rect_to_draw,
         border_radius=5,
     )
     screen.blit(text, rect)
