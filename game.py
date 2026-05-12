@@ -97,11 +97,18 @@ class Game:
         pygame.display.set_caption(self.game_title)
 
         self.clock = pygame.time.Clock()
-        self.states = {"menu": MenuState(self)}
+        self.states = {"menu": MenuState(self), "tutorial": TutorialState(self)}
         self.current_state = self.states["menu"]
 
     def run(self):
-        while not self.current_state.should_window_close():
+        is_running = True
+        while is_running and not self.current_state.window_should_close():
+            events = pygame.event.get()
+            for event in events:
+                if event.type == pygame.QUIT:
+                    is_running = False
+
+            self.current_state.handle_events(events)
             self.current_state.update()
 
             self.screen.fill("#014F84")
@@ -112,8 +119,11 @@ class Game:
 
 
 class State:
-    def should_window_close(self) -> bool:
+    def window_should_close(self) -> bool:
         return False
+
+    def handle_events(self, events: list[pygame.event.Event]):
+        raise NotImplementedError("handle_event must be overridden")
 
     def update(self):
         raise NotImplementedError("update must be overridden")
@@ -124,10 +134,11 @@ class State:
 
 class MenuState(State):
     def __init__(self, game: Game):
-        self.font_name = pygame.font.get_default_font()
-        self.title_size = int(72 * game.scale)
-        self.title_font = pygame.font.Font(self.font_name, self.title_size)
-        self.title = self.title_font.render(game.game_title.upper(), True, "white")
+        self.game = game
+        font_name = pygame.font.get_default_font()
+        title_size = int(72 * game.scale)
+        title_font = pygame.font.Font(font_name, title_size)
+        self.title = title_font.render(game.game_title.upper(), True, "white")
         self.title_rect = self.title.get_rect()
         self.title_rect.center = (game.width // 2, game.height // 5)
 
@@ -142,51 +153,75 @@ class MenuState(State):
             self.button_height,
             game.scale,
         )
-        self.is_running = True
-        self.screen = game.screen
         self.hovered_button = ""
         self.left_clicked = False
+        self.should_close = False
 
-    def should_window_close(self) -> bool:
-        return not self.is_running
+    def window_should_close(self) -> bool:
+        return self.should_close
+
+    def handle_events(self, events: list[pygame.event.Event]):
+        self.left_clicked = False
+        for event in events:
+            # Note: this event checks for single click; pygame.mouse.get_pressed()
+            # reports a held button, which is not the desired behavior.
+            self.left_clicked = (
+                event.type == pygame.MOUSEBUTTONDOWN and event.button == 1
+            )
+            if self.left_clicked:
+                break
 
     def update(self):
-        self.left_clicked = False
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                self.is_running = False
-            else:
-                # Note: this event checks for single click; pygame.mouse.get_pressed()
-                # reports a held button, which is not the desired behavior.
-                self.left_clicked = (
-                    event.type == pygame.MOUSEBUTTONDOWN and event.button == 1
-                )
-
         self.hovered_button = find_hovered_button(
             self.buttons, self.button_width, self.button_height
         )
+
         if not self.left_clicked:
             return
 
         if self.hovered_button == "Jouer":
             print("Gonna play")
         elif self.hovered_button == "Tutoriel":
-            print("Gonna show the tutorial")
+            # print("Gonna show the tutorial")
+            self.game.current_state = self.game.states["tutorial"]
         elif self.hovered_button == "Quitter":
-            self.is_running = False
+            self.should_close = True
 
     def draw(self):
-        self.screen.blit(self.title, self.title_rect)
+        self.game.screen.blit(self.title, self.title_rect)
 
         for name, (text, text_rect) in self.buttons.items():
             color = "white"
             if name == self.hovered_button:
                 color = "#D6EFFE" if self.left_clicked else "#E8F4FF"
             draw_button(
-                self.screen,
+                self.game.screen,
                 text,
                 text_rect,
                 self.button_width,
                 self.button_height,
                 color,
             )
+
+
+class TutorialState(State):
+    def __init__(self, game: Game) -> None:
+        self.game = game
+
+        font_name = pygame.font.get_default_font()
+        title_size = int(64 * game.scale)
+        title_font = pygame.font.Font(font_name, title_size)
+        self.title = title_font.render("SETUP", True, "white")
+        self.title_rect = self.title.get_rect()
+        self.title_rect.center = (game.width // 2, game.height // 5)
+
+    def handle_events(self, events: list[pygame.event.Event]):
+        pass
+
+    def update(self):
+        keys = pygame.key.get_pressed()
+        if keys[pygame.K_ESCAPE]:
+            self.game.current_state = self.game.states["menu"]
+
+    def draw(self):
+        self.game.screen.blit(self.title, self.title_rect)
