@@ -3,7 +3,7 @@
 ChunkyMemo — acquisition.py
 ==============================================================
 Acquisition REELLE uniquement via BITalino + plux.
-si plux n'est pas disponible ou si le
+Pas de simulation — si plux n'est pas disponible ou si le
 BITalino n'est pas connecté, le programme s'arrête avec un
 message d'erreur clair.
 
@@ -18,10 +18,23 @@ Comment tester :
 
 import platform
 import sys
+import os
 import time
 import queue
 import threading
 import config
+
+# ==============================================================
+# CHEMIN VERS plux.pyd
+# ==============================================================
+# plux.pyd (Windows) ou plux.so (Linux/Mac) doit etre dans le
+# meme dossier que ce fichier.
+# On ajoute le dossier du script dans sys.path pour que Python
+# le trouve automatiquement.
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+if SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, SCRIPT_DIR)
 
 # ==============================================================
 # IMPORT PLUX — obligatoire, pas de fallback
@@ -32,8 +45,8 @@ try:
     _ = plux.SignalsDev
     print("[acquisition] plux charge avec succes")
 except (ImportError, AttributeError):
-    print("[acquisition] ERREUR : plux non installe")
-    print("  Telechargez plux ici :")
+    print("[acquisition] ERREUR : plux.pyd introuvable")
+    print(f"  Verifiez que plux.pyd est dans : {SCRIPT_DIR}")
     pv = platform.python_version().split(".")
     suffix = platform.architecture()[0][:2] + "_" + pv[0] + pv[1]
     os_name = platform.system()
@@ -55,18 +68,22 @@ except (ImportError, AttributeError):
 class ChunkyDevice(plux.SignalsDev):
     """
     Sous-classe de plux.SignalsDev.
-    onRawFrame envoie chaque frame dans la queue partagée.
+    Identique au NewDevice du prof — __init__ prend SEULEMENT address.
+    data_queue et stop_event sont assignes depuis run() apres creation.
 
     ACTIVE_PORTS = [3, 4]
       data[0] = port 3 = PPG   (config.IDX_PPG = 0)
       data[1] = port 4 = PZT   (config.IDX_PZT = 1)
     """
 
-    def __init__(self, address: str, data_queue: queue.Queue,
-                 stop_event: threading.Event):
+    def __init__(self, address: str):
+        # Identique au prof : plux.SignalsDev.__init__(address)
+        # PAS de self, PAS d'autres arguments — c'est la convention plux
         plux.SignalsDev.__init__(address)
-        self.data_queue  = data_queue
-        self.stop_event  = stop_event
+        # Ces attributs seront assignes depuis run() apres creation :
+        # self.data_queue, self.stop_event
+        self.data_queue  = None
+        self.stop_event  = None
         self.duration    = config.DURATION_MAX
         self.frequency   = config.SAMPLING_RATE
         self._last_print = 0
@@ -133,10 +150,13 @@ class AcquisitionThread(threading.Thread):
         """Acquisition reelle uniquement — pas de simulation."""
         try:
             print(f"[acquisition] Connexion a {config.MAC_ADDRESS} ...")
-            self.device = ChunkyDevice(config.MAC_ADDRESS,
-                                       self.data_queue, self.stop_event)
-            self.device.duration  = config.DURATION_MAX
-            self.device.frequency = config.SAMPLING_RATE
+            # Creation identique au prof : NewDevice(address)
+            # Puis on assigne data_queue et stop_event comme attributs
+            self.device             = ChunkyDevice(config.MAC_ADDRESS)
+            self.device.data_queue  = self.data_queue
+            self.device.stop_event  = self.stop_event
+            self.device.duration    = config.DURATION_MAX
+            self.device.frequency   = config.SAMPLING_RATE
 
             # device.start(frequency, active_ports, resolution) — identique au prof
             self.device.start(config.SAMPLING_RATE,

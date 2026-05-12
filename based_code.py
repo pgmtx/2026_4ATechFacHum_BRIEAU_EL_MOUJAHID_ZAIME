@@ -100,3 +100,4 @@ def exampleAcquisition(
 
 if __name__ == "__main__":
     exampleAcquisition("98:D3:11:FE:03:67")
+    
