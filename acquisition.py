@@ -2,22 +2,17 @@
 ==============================================================
 ChunkyMemo — acquisition.py
 ==============================================================
-Gère la connexion au BITalino et l'acquisition des signaux.
-Structure EXACTEMENT basée sur le main.py du professeur :
-  - Sous-classe de plux.SignalsDev
-  - Callback onRawFrame(nSeq, data)
-  - device.start() → device.loop() → device.stop()
+Acquisition REELLE uniquement via BITalino + plux.
+si plux n'est pas disponible ou si le
+BITalino n'est pas connecté, le programme s'arrête avec un
+message d'erreur clair.
 
-La seule différence : au lieu d'afficher dans matplotlib,
-on envoie les données dans une queue partagée avec le jeu.
+Capteurs actifs : PPG (port 3) + PZT (port 4)
 
-Comment tester ce fichier seul :
+Comment tester :
   python acquisition.py
-  → démarre 10 secondes d'acquisition et affiche les valeurs
-  → si plux n'est pas dispo, affiche des données simulées
-
-Omar / Salma : si les valeurs sont toutes à 0 ou plates,
-vérifiez les numéros de ports dans config.py
+  → connecte le BITalino, 10 secondes d'acquisition,
+    affiche les graphiques PPG + PZT + flèches clavier
 ==============================================================
 """
 
@@ -26,358 +21,279 @@ import sys
 import time
 import queue
 import threading
-import math
-import random
-from collections import deque
-
-# Import de notre configuration centrale
 import config
 
 # ==============================================================
-# IMPORT PLUX — même logique que main.py du prof
+# IMPORT PLUX — obligatoire, pas de fallback
 # ==============================================================
 
 try:
     import plux
-    _ = plux.SignalsDev   # vérifie que le fichier .so/.dll est présent
-    PLUX_AVAILABLE = True
-    print("[acquisition] plux chargé avec succès")
+    _ = plux.SignalsDev
+    print("[acquisition] plux charge avec succes")
 except (ImportError, AttributeError):
-    PLUX_AVAILABLE = False
-    print("[acquisition] plux non disponible → mode simulation activé")
-    print(f"[acquisition] Télécharger plux ici :")
-    print(f"  https://github.com/pluxbiosignals/python-samples/tree/master/"
-          f"PLUX-API-Python3/{config.OS_DIC.get(platform.system(), 'Linux64')}")
+    print("[acquisition] ERREUR : plux non installe")
+    print("  Telechargez plux ici :")
+    pv = platform.python_version().split(".")
+    suffix = platform.architecture()[0][:2] + "_" + pv[0] + pv[1]
+    os_name = platform.system()
+    if os_name == "Windows":
+        path = f"Win{suffix}"
+    elif os_name == "Darwin":
+        path = f"MacOS/Intel{pv[0]}{pv[1]}"
+    else:
+        path = "Linux64"
+    print(f"  https://github.com/pluxbiosignals/python-samples/tree/master/PLUX-API-Python3/{path}")
+    sys.exit(1)
 
 
 # ==============================================================
 # CLASSE DEVICE — sous-classe de plux.SignalsDev
-# Structure identique au NewDevice du prof, adaptée pour la queue
+# Identique au NewDevice du prof, données vers queue
 # ==============================================================
 
-if PLUX_AVAILABLE:
-    class ChunkyDevice(plux.SignalsDev):
+class ChunkyDevice(plux.SignalsDev):
+    """
+    Sous-classe de plux.SignalsDev.
+    onRawFrame envoie chaque frame dans la queue partagée.
+
+    ACTIVE_PORTS = [3, 4]
+      data[0] = port 3 = PPG   (config.IDX_PPG = 0)
+      data[1] = port 4 = PZT   (config.IDX_PZT = 1)
+    """
+
+    def __init__(self, address: str, data_queue: queue.Queue,
+                 stop_event: threading.Event):
+        plux.SignalsDev.__init__(address)
+        self.data_queue  = data_queue
+        self.stop_event  = stop_event
+        self.duration    = config.DURATION_MAX
+        self.frequency   = config.SAMPLING_RATE
+        self._last_print = 0
+
+    def onRawFrame(self, nSeq, data):
         """
-        Sous-classe de plux.SignalsDev.
-        Exactement comme NewDevice dans main.py du prof,
-        mais onRawFrame envoie dans une queue au lieu de matplotlib.
+        Appelé automatiquement par plux a chaque frame (100x/seconde).
 
-        Paramètres :
-            address    : adresse MAC du BITalino
-            data_queue : queue.Queue partagée avec le reste de l'appli
-            stop_event : threading.Event — mettre .set() pour arrêter
+        data[config.IDX_PPG] = data[0] = valeur PPG brute
+        data[config.IDX_PZT] = data[1] = valeur PZT brute
+
+        Retourne True  → arrête device.loop()
+        Retourne False → continue
         """
+        sample = {
+            "ts":   time.time(),              # horodatage Unix precis
+            "nSeq": nSeq,                     # numero de frame depuis le debut
+            "ppg":  int(data[config.IDX_PPG]),# pouls — valeur brute 0-65535
+            "pzt":  int(data[config.IDX_PZT]),# respiration — valeur brute 0-65535
+            "raw":  list(data),               # toutes les valeurs brutes du frame
+        }
 
-        def __init__(self, address: str, data_queue: queue.Queue,
-                     stop_event: threading.Event):
-            # Constructeur plux — identique au prof
-            plux.SignalsDev.__init__(address)
+        try:
+            self.data_queue.put_nowait(sample)  # non bloquant
+        except queue.Full:
+            pass   # queue pleine → on perd l echantillon plutot que de bloquer
 
-            self.data_queue = data_queue    # où envoyer les données
-            self.stop_event = stop_event    # signal d'arrêt
-            self.duration   = config.DURATION_MAX
-            self.frequency  = config.SAMPLING_RATE
+        # Debug : 1 ligne par seconde dans la console
+        now = time.time()
+        if now - self._last_print >= 1.0:
+            print(f"[BITalino] nSeq={nSeq:6d} | "
+                  f"ppg={sample['ppg']:5d} | "
+                  f"pzt={sample['pzt']:5d}")
+            self._last_print = now
 
-            # Compteur pour debug
-            self._frame_count = 0
-            self._last_print  = 0
-
-        def onRawFrame(self, nSeq, data):
-            """
-            Appelé automatiquement par plux à CHAQUE frame reçue.
-
-            Paramètres (identiques au prof) :
-                nSeq : int   — numéro de séquence, commence à 0
-                data : tuple — valeurs des ports actifs
-                               data[0] = port A1, data[1] = port A2, etc.
-
-            Retourne True pour arrêter, False pour continuer.
-            (Identique au prof : nSeq > duration * frequency)
-            """
-            self._frame_count += 1
-
-            # ── Construction du sample ──────────────────────────────
-            # On accède aux données via les index définis dans config.py
-            # Si votre branchement est différent, changez IDX_* dans config.py
-            sample = {
-                "ts":    time.time(),                        # horodatage Unix
-                "nSeq":  nSeq,                               # numéro de frame
-                "acc_x": int(data[config.IDX_ACC_X]),        # accéléromètre X
-                "acc_y": int(data[config.IDX_ACC_Y]),        # accéléromètre Y
-                "ppg":   int(data[config.IDX_PPG]),          # pouls
-                "pzt":   int(data[config.IDX_PZT]),          # respiration
-                "raw":   list(data),                         # toutes les valeurs brutes
-            }
-
-            # ── Envoi dans la queue (non-bloquant) ──────────────────
-            try:
-                self.data_queue.put_nowait(sample)
-            except queue.Full:
-                # Queue pleine = le jeu n'a pas consommé assez vite
-                # On ignore l'échantillon plutôt que de bloquer
-                pass
-
-            # ── Debug : afficher 1 ligne par seconde ────────────────
-            now = time.time()
-            if now - self._last_print >= 1.0:
-                print(f"[plux] nSeq={nSeq:6d} | "
-                      f"acc_x={sample['acc_x']:5d} "
-                      f"acc_y={sample['acc_y']:5d} | "
-                      f"ppg={sample['ppg']:5d} | "
-                      f"pzt={sample['pzt']:5d}")
-                self._last_print = now
-
-            # ── Condition d'arrêt — identique au prof ───────────────
-            # Retourner True arrête device.loop()
-            time_exceeded = nSeq > self.duration * self.frequency
-            user_stopped  = self.stop_event.is_set()
-            return time_exceeded or user_stopped
+        # Condition d'arret — identique au prof
+        return self.stop_event.is_set() or (nSeq > self.duration * self.frequency)
 
 
 # ==============================================================
 # THREAD D'ACQUISITION
-# Lance device.loop() dans un thread séparé pour ne pas bloquer Pygame
 # ==============================================================
 
 class AcquisitionThread(threading.Thread):
     """
-    Thread daemon qui fait tourner l'acquisition en arrière-plan.
+    Thread daemon — acquisition BITalino en arriere-plan.
+    Le jeu tourne dans le thread principal, celui-ci lit les capteurs.
 
     Utilisation :
         q = queue.Queue(maxsize=2000)
         t = AcquisitionThread(q)
         t.start()
-        # ... votre code principal ...
+        # ... jeu en cours ...
         t.stop()
-
-    Si plux n'est pas disponible → simulation automatique.
     """
 
     def __init__(self, data_queue: queue.Queue):
-        super().__init__(daemon=True)   # daemon = s'arrête avec le programme principal
-        self.data_queue  = data_queue
-        self.stop_event  = threading.Event()   # Event thread-safe pour l'arrêt
-        self.device      = None
-        self.is_simulating = not PLUX_AVAILABLE
+        super().__init__(daemon=True)   # s arrete avec le programme principal
+        self.data_queue = data_queue
+        self.stop_event = threading.Event()
+        self.device     = None
 
     def run(self):
-        """Lance l'acquisition (réelle ou simulée)."""
-        if PLUX_AVAILABLE:
-            self._run_real()
-        else:
-            self._run_simulation()
-
-    def _run_real(self):
-        """Acquisition réelle — structure identique à exampleAcquisition() du prof."""
+        """Acquisition reelle uniquement — pas de simulation."""
         try:
-            print(f"[acquisition] Connexion à {config.MAC_ADDRESS}...")
-            self.device = ChunkyDevice(
-                config.MAC_ADDRESS,
-                self.data_queue,
-                self.stop_event
-            )
-
-            # Paramètres — identiques au prof
+            print(f"[acquisition] Connexion a {config.MAC_ADDRESS} ...")
+            self.device = ChunkyDevice(config.MAC_ADDRESS,
+                                       self.data_queue, self.stop_event)
             self.device.duration  = config.DURATION_MAX
             self.device.frequency = config.SAMPLING_RATE
 
-            # Démarrage — identique au prof :
-            # device.start(frequency, active_ports, resolution)
-            self.device.start(
-                config.SAMPLING_RATE,
-                config.ACTIVE_PORTS,
-                config.RESOLUTION
-            )
-            print(f"[acquisition] Démarré — ports={config.ACTIVE_PORTS} "
-                  f"@ {config.SAMPLING_RATE}Hz")
+            # device.start(frequency, active_ports, resolution) — identique au prof
+            self.device.start(config.SAMPLING_RATE,
+                              config.ACTIVE_PORTS,
+                              config.RESOLUTION)
+            print(f"[acquisition] Demarre — "
+                  f"ports={config.ACTIVE_PORTS} @ {config.SAMPLING_RATE}Hz")
 
-            # Boucle — identique au prof
-            # Bloque jusqu'à ce que onRawFrame retourne True
+            # device.loop() bloque jusqu a ce que onRawFrame retourne True
             self.device.loop()
 
         except Exception as e:
-            print(f"[acquisition] ERREUR connexion plux : {e}")
-            print("[acquisition] → Bascule en mode simulation")
-            self.is_simulating = True
-            self._run_simulation()
+            print(f"[acquisition] ERREUR connexion BITalino : {e}")
+            print("[acquisition] Verifiez :")
+            print(f"  1. BITalino allume et bluetooth actif")
+            print(f"  2. Adresse MAC correcte dans config.py : {config.MAC_ADDRESS}")
+            print(f"  3. Ports correctement branches : {config.ACTIVE_PORTS}")
         finally:
-            # Nettoyage — identique au prof
             if self.device:
                 try:
                     self.device.stop()
                     self.device.close()
-                    print("[acquisition] Connexion fermée proprement")
-                except Exception as ex:
-                    print(f"[acquisition] Erreur fermeture : {ex}")
-
-    def _run_simulation(self):
-        """
-        Génère des signaux synthétiques réalistes.
-        Utilisé quand plux n'est pas disponible.
-
-        Signaux générés :
-          ACC : bruit gaussien + légères dérives (bras au repos)
-          PPG : onde de pouls à ~66 bpm avec bruit physiologique
-          PZT : respiration à ~15 cycles/min avec variation naturelle
-        """
-        print("[acquisition] Simulation démarrée (signaux synthétiques)")
-        t     = 0.0
-        dt    = 1.0 / config.SAMPLING_RATE
-        nSeq  = 0
-
-        # Valeur de repos ACC (centre de la plage 16 bits)
-        acc_rest = 32768
-
-        while not self.stop_event.is_set():
-            t    += dt
-            nSeq += 1
-
-            # ACC : position de repos + dérive lente + bruit
-            # En jeu réel, les pics seront bien plus marqués lors des gestes
-            acc_x = acc_rest + int(
-                500 * math.sin(0.3 * t) +        # dérive lente
-                random.gauss(0, 150)              # bruit physiologique
-            )
-            acc_y = acc_rest + int(
-                400 * math.cos(0.2 * t) +
-                random.gauss(0, 150)
-            )
-
-            # PPG : onde de pouls à 66 bpm (1.1 Hz)
-            # Forme asymétrique typique d'une onde pléthysmographique
-            phase_ppg = 2 * math.pi * 1.1 * t
-            ppg = 32768 + int(
-                6000 * math.sin(phase_ppg) * max(0, math.sin(phase_ppg)) +
-                random.gauss(0, 200)
-            )
-
-            # PZT : respiration à 15 cycles/min (0.25 Hz)
-            # Amplitude plus grande → signal respiratoire typique
-            pzt = 32768 + int(
-                10000 * math.sin(2 * math.pi * 0.25 * t) +
-                random.gauss(0, 100)
-            )
-
-            sample = {
-                "ts":    time.time(),
-                "nSeq":  nSeq,
-                "acc_x": acc_x,
-                "acc_y": acc_y,
-                "ppg":   ppg,
-                "pzt":   pzt,
-                "raw":   [acc_x, acc_y, ppg, pzt],
-            }
-
-            try:
-                self.data_queue.put_nowait(sample)
-            except queue.Full:
-                pass
-
-            # Debug : 1 ligne par seconde
-            if nSeq % config.SAMPLING_RATE == 0:
-                print(f"[SIM] t={t:.1f}s | "
-                      f"acc_x={acc_x:6d} acc_y={acc_y:6d} | "
-                      f"ppg={ppg:6d} | pzt={pzt:6d}")
-
-            time.sleep(dt)
+                    print("[acquisition] Connexion fermee proprement")
+                except Exception:
+                    pass
 
     def stop(self):
-        """Arrêt propre — signal au thread et au device."""
-        print("[acquisition] Arrêt demandé...")
-        self.stop_event.set()   # signal à onRawFrame de retourner True
+        """Arret propre — signal a onRawFrame de retourner True."""
+        print("[acquisition] Arret demande...")
+        self.stop_event.set()
 
 
 # ==============================================================
 # TEST STANDALONE — python acquisition.py
 # ==============================================================
-# Lance 10 secondes d'acquisition et affiche les données.
-# Permet de vérifier que le BITalino est bien détecté et
-# que les bons capteurs sont sur les bons ports.
-# ==============================================================
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
+    import matplotlib.patches as mpatches
 
     print("=" * 50)
-    print("TEST ACQUISITION — ChunkyMemo")
+    print("TEST ACQUISITION REELLE — ChunkyMemo")
     print("=" * 50)
     print()
 
-    # Valider la config
     if not config.validate():
-        print("Corrigez config.py avant de continuer")
         sys.exit(1)
 
     print()
-    print("Démarrage acquisition 10 secondes...")
-    print("(Gardez le bras immobile pendant la calibration)")
+    print("Assurez-vous que le BITalino est :")
+    print("  - Allume (LED verte)")
+    print("  - Bluetooth appaire a cet ordinateur")
+    print(f"  - PPG branche sur port {config.ACTIVE_PORTS[config.IDX_PPG]}")
+    print(f"  - PZT branche sur port {config.ACTIVE_PORTS[config.IDX_PZT]}")
+    print()
+    print("Pendant les 10 secondes : tapez Z/S/Q/D + Entree pour marquer des fleches")
+    print()
+    input("Appuyez sur Entree pour demarrer...")
     print()
 
-    # Queue pour recevoir les données
-    data_q = queue.Queue(maxsize=config.QUEUE_MAXSIZE)
+    KEYMAP = {
+        "z":"UP","Z":"UP","s":"DOWN","S":"DOWN",
+        "q":"LEFT","Q":"LEFT","d":"RIGHT","D":"RIGHT",
+    }
+    ARROW_SYMBOL = {"UP":"haut","DOWN":"bas","LEFT":"gauche","RIGHT":"droite"}
+    ARROW_COLOR  = {"UP":"green","DOWN":"red","LEFT":"blue","RIGHT":"purple"}
 
-    # Démarrer le thread d'acquisition
-    acq = AcquisitionThread(data_q)
+    key_events      = []
+    key_events_lock = threading.Lock()
+
+    def keyboard_listener(start_time, stop_flag):
+        while not stop_flag[0]:
+            try:
+                raw = input()
+                ts  = time.time() - start_time
+                d   = KEYMAP.get(raw.strip())
+                if d:
+                    with key_events_lock:
+                        key_events.append((ts, d))
+                    print(f"  Fleche {ARROW_SYMBOL[d]} enregistree a t={ts:.2f}s")
+            except (EOFError, KeyboardInterrupt):
+                break
+
+    data_q    = queue.Queue(maxsize=config.QUEUE_MAXSIZE)
+    acq       = AcquisitionThread(data_q)
     acq.start()
 
-    # Collecter 10 secondes de données
     TEST_DURATION = 10
-    start = time.time()
+    start         = time.time()
+    stop_flag     = [False]
 
-    all_ppg   = []
-    all_pzt   = []
-    all_acc_x = []
-    all_acc_y = []
-    all_ts    = []
+    kb_thread = threading.Thread(
+        target=keyboard_listener, args=(start, stop_flag), daemon=True)
+    kb_thread.start()
 
+    all_ppg, all_pzt, all_ts = [], [], []
     print(f"Collecte en cours ({TEST_DURATION}s)...")
+
     while time.time() - start < TEST_DURATION:
         try:
-            sample = data_q.get(timeout=0.5)
+            sample = data_q.get(timeout=0.1)
             all_ppg.append(sample["ppg"])
             all_pzt.append(sample["pzt"])
-            all_acc_x.append(sample["acc_x"])
-            all_acc_y.append(sample["acc_y"])
             all_ts.append(sample["ts"] - start)
         except queue.Empty:
             pass
 
+    stop_flag[0] = True
     acq.stop()
-    time.sleep(0.5)
+    time.sleep(0.3)
+
+    with key_events_lock:
+        captured_keys = list(key_events)
 
     print()
-    print(f"Collecté : {len(all_ppg)} échantillons")
-    print(f"Fréquence effective : {len(all_ppg) / TEST_DURATION:.1f} Hz")
-    print()
-    print(f"PPG   — min={min(all_ppg):6d}  max={max(all_ppg):6d}  "
+    if not all_ppg:
+        print("AUCUNE donnee recue — verifiez la connexion BITalino")
+        sys.exit(1)
+
+    print(f"Collecte      : {len(all_ppg)} echantillons")
+    print(f"Freq. effect. : {len(all_ppg) / TEST_DURATION:.1f} Hz")
+    print(f"Fleches tapees: {len(captured_keys)}")
+    print(f"PPG — min={min(all_ppg):6d}  max={max(all_ppg):6d}  "
           f"amplitude={max(all_ppg)-min(all_ppg):6d}")
-    print(f"PZT   — min={min(all_pzt):6d}  max={max(all_pzt):6d}  "
+    print(f"PZT — min={min(all_pzt):6d}  max={max(all_pzt):6d}  "
           f"amplitude={max(all_pzt)-min(all_pzt):6d}")
-    print(f"ACC_X — min={min(all_acc_x):6d}  max={max(all_acc_x):6d}")
-    print(f"ACC_Y — min={min(all_acc_y):6d}  max={max(all_acc_y):6d}")
     print()
 
-    # Affichage matplotlib — identique au style du prof
-    fig, axes = plt.subplots(4, 1, figsize=(12, 8), sharex=True)
-    fig.suptitle("Test acquisition ChunkyMemo — 10 secondes", fontsize=14)
+    fig, axes = plt.subplots(2, 1, figsize=(14, 7), sharex=True)
+    fig.suptitle("Test acquisition reelle ChunkyMemo — PPG + PZT + fleches", fontsize=13)
 
-    axes[0].plot(all_ts, all_ppg, color="tab:red",    linewidth=0.8)
+    axes[0].plot(all_ts, all_ppg, color="tab:red", linewidth=0.8)
     axes[0].set_ylabel("PPG (pouls)")
-    axes[0].set_title("Photopléthysmographie")
+    axes[0].set_title("Photoplethysmographie")
 
     axes[1].plot(all_ts, all_pzt, color="tab:orange", linewidth=0.8)
-    axes[1].set_ylabel("PZT (resp.)")
-    axes[1].set_title("Respiration piézoélectrique")
+    axes[1].set_ylabel("PZT (respiration)")
+    axes[1].set_xlabel("Temps (secondes)")
+    axes[1].set_title("Respiration piezzoelectrique")
 
-    axes[2].plot(all_ts, all_acc_x, color="tab:blue",  linewidth=0.8)
-    axes[2].set_ylabel("ACC X")
-    axes[2].set_title("Accéléromètre axe X")
+    for ts_k, direction in captured_keys:
+        col = ARROW_COLOR[direction]
+        for ax in axes:
+            ax.axvline(x=ts_k, color=col, linewidth=1.5, alpha=0.7, linestyle="--")
+        if all_ppg:
+            axes[0].annotate(
+                {"UP":"haut","DOWN":"bas","LEFT":"gauche","RIGHT":"droite"}[direction],
+                xy=(ts_k, max(all_ppg)), fontsize=10, color=col,
+                ha="center", va="bottom", fontweight="bold"
+            )
 
-    axes[3].plot(all_ts, all_acc_y, color="tab:green", linewidth=0.8)
-    axes[3].set_ylabel("ACC Y")
-    axes[3].set_xlabel("Temps (secondes)")
-    axes[3].set_title("Accéléromètre axe Y")
+    if captured_keys:
+        patches = [mpatches.Patch(color=ARROW_COLOR[d], label=ARROW_SYMBOL[d])
+                   for d in ["UP","DOWN","LEFT","RIGHT"]
+                   if any(ev[1]==d for ev in captured_keys)]
+        axes[0].legend(handles=patches, loc="upper right", fontsize=9)
 
     plt.tight_layout()
     plt.show()
-    print("Fermez la fenêtre matplotlib pour quitter.")
+    print("Fermez la fenetre matplotlib pour quitter.")
