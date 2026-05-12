@@ -9,8 +9,10 @@ conda create --name myenv python=3.13
 conda activate myenv
 conda install --file requirements.txt
 python run main.py
-```
+``
+### if you get any erreur installing the requirements run this intide 
 
+pip install -r requirements.txt
 ### Using uv
 
 ```
