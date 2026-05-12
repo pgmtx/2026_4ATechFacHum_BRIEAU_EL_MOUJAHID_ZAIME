@@ -99,10 +99,15 @@ def exampleAcquisition(
     device.close()
 
 
-scale = -1
-
-
-def create_buttons(button_names, title_bottom: int, button_height: int):
+def create_buttons(
+    width: int,
+    height: int,
+    button_names,
+    title_bottom: int,
+    button_height: int,
+    scale: float,
+):
+    font_name = pygame.font.get_default_font()
     button_text_size = int(36 * scale)
     button_font = pygame.font.Font(font_name, button_text_size)
 
@@ -163,83 +168,132 @@ def draw_button(
     screen.blit(text, rect)
 
 
+class State:
+    def should_window_close(self) -> bool:
+        return False
+
+    def update(self):
+        raise NotImplementedError("update must be overridden")
+
+    def draw(self):
+        raise NotImplementedError("draw must be overridden")
+
+
+class MenuState(State):
+    def __init__(self, game):
+        self.font_name = pygame.font.get_default_font()
+        self.title_size = int(72 * game.scale)
+        self.title_font = pygame.font.Font(self.font_name, self.title_size)
+        self.title = self.title_font.render(game.game_title.upper(), True, "white")
+        self.title_rect = self.title.get_rect()
+        self.title_rect.center = (game.width // 2, game.height // 5)
+
+        self.button_names = ("Jouer", "Tutoriel", "Quitter")
+        self.button_width = int(255 * game.scale)
+        self.button_height = int(76 * game.scale)
+        self.buttons = create_buttons(
+            game.width,
+            game.height,
+            self.button_names,
+            self.title_rect.bottom,
+            self.button_height,
+            game.scale,
+        )
+        self.is_running = True
+        self.screen = game.screen
+        self.hovered_button = ""
+        self.left_clicked = False
+
+    def should_window_close(self) -> bool:
+        return not self.is_running
+
+    def update(self):
+        self.left_clicked = False
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.is_running = False
+            else:
+                # Note: this event checks for single click; pygame.mouse.get_pressed()
+                # reports a held button, which is not the desired behavior.
+                self.left_clicked = (
+                    event.type == pygame.MOUSEBUTTONDOWN and event.button == 1
+                )
+
+        self.hovered_button = find_hovered_button(
+            self.buttons, self.button_width, self.button_height
+        )
+        if not self.left_clicked:
+            return
+
+        if self.hovered_button == "Jouer":
+            print("Gonna play")
+        elif self.hovered_button == "Tutoriel":
+            print("Gonna show the tutorial")
+        elif self.hovered_button == "Quitter":
+            self.is_running = False
+
+    def draw(self):
+        self.screen.blit(self.title, self.title_rect)
+
+        for name, (text, text_rect) in self.buttons.items():
+            color = "white"
+            if name == self.hovered_button:
+                color = "#D6EFFE" if self.left_clicked else "#E8F4FF"
+            draw_button(
+                self.screen,
+                text,
+                text_rect,
+                self.button_width,
+                self.button_height,
+                color,
+            )
+
+
+class Game:
+    def __init__(self):
+        self.fps = 60
+        self.game_title = "Chunkymemo"
+
+        ref_width, ref_height = 1280, 720
+
+        is_windowed = len(sys.argv) > 1 and sys.argv[1] == "--windowed"
+        self.width, self.height = ref_width, ref_height
+        flags = 0
+
+        if not is_windowed:
+            info = pygame.display.Info()
+            self.width, self.height = info.current_w, info.current_h
+            flags = pygame.NOFRAME
+
+        scale = min(self.width / ref_width, self.height / ref_height)
+
+        # Otherwise texts and buttons look way too big
+        self.scale = min(scale, 1.5)
+
+        self.screen = pygame.display.set_mode((self.width, self.height), flags)
+        pygame.display.set_caption(self.game_title)
+
+        self.clock = pygame.time.Clock()
+        self.states = {"menu": MenuState(self)}
+        self.current_state = self.states["menu"]
+
+    def run(self):
+        while not self.current_state.should_window_close():
+            self.current_state.update()
+
+            self.screen.fill("#014F84")
+            self.current_state.draw()
+            pygame.display.flip()
+
+            self.clock.tick(self.fps)
+
+
 if __name__ == "__main__":
     # exampleAcquisition("98:D3:11:FE:03:67")
 
     pygame.init()
 
-    fps = 60
-    game_title = "Chunkymemo"
-
-    ref_width, ref_height = 1280, 720
-
-    is_windowed = len(sys.argv) > 1 and sys.argv[1] == "--windowed"
-    width, height = ref_width, ref_height
-    flags = 0
-
-    if not is_windowed:
-        info = pygame.display.Info()
-        width, height = info.current_w, info.current_h
-        flags = pygame.NOFRAME
-
-    scale_x = width / ref_width
-    scale_y = height / ref_height
-    scale = min(width / ref_width, height / ref_height)
-
-    # Otherwise texts and buttons look way too big
-    scale = min(scale, 1.5)
-
-    screen = pygame.display.set_mode((width, height), flags)
-    pygame.display.set_caption(game_title)
-
-    clock = pygame.time.Clock()
-    font_name = pygame.font.get_default_font()
-
-    title_size = int(72 * scale)
-    title_font = pygame.font.Font(font_name, title_size)
-    title = title_font.render(game_title.upper(), True, "white")
-    title_rect = title.get_rect()
-    title_rect.center = (width // 2, height // 5)
-
-    button_names = ("Jouer", "Tutoriel", "Quitter")
-    button_width = int(255 * scale)
-    button_height = int(76 * scale)
-    buttons = create_buttons(button_names, title_rect.bottom, button_height)
-
-    is_running = True
-    while is_running:
-        # Update
-        left_clicked = False
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                is_running = False
-            else:
-                # Note: this event checks for single click; pygame.mouse.get_pressed()
-                # reports a held button, which is not the desired behavior.
-                left_clicked = (
-                    event.type == pygame.MOUSEBUTTONDOWN and event.button == 1
-                )
-
-        hovered_button = find_hovered_button(buttons, button_width, button_height)
-        if left_clicked:
-            if hovered_button == "Jouer":
-                print("Gonna play")
-            elif hovered_button == "Tutoriel":
-                print("Gonna show the tutorial")
-            elif hovered_button == "Quitter":
-                is_running = False
-
-        # Draw
-        screen.fill("#014F84")
-        screen.blit(title, title_rect)
-
-        for name, (text, text_rect) in buttons.items():
-            color = "white"
-            if name == hovered_button:
-                color = "#D6EFFE" if left_clicked else "#E8F4FF"
-            draw_button(screen, text, text_rect, button_width, button_height, color)
-
-        pygame.display.flip()
-        clock.tick(fps)
+    game = Game()
+    game.run()
 
     pygame.quit()
