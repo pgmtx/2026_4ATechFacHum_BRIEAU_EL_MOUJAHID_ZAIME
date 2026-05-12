@@ -102,39 +102,12 @@ def exampleAcquisition(
 scale = -1
 
 
-def draw_button(
-    screen: pygame.Surface, text: pygame.Surface, rect: pygame.Rect, button_height: int
-):
-    button_width = int(255 * scale)
-    rect_to_draw = pygame.Rect(
-        rect.center[0] - button_width // 2,
-        rect.y - button_height // 4,
-        button_width,
-        button_height,
-    )
-    is_hovered = rect_to_draw.collidepoint(pygame.mouse.get_pos())
-
-    left_clicked, _, _ = pygame.mouse.get_pressed()
-    color = "white"
-    if is_hovered:
-        color = "#D6EFFE" if left_clicked else "#E8F4FF"
-
-    pygame.draw.rect(
-        screen,
-        color,
-        rect_to_draw,
-        border_radius=5,
-    )
-    screen.blit(text, rect)
-
-
-def create_buttons(title_bottom: int, button_height: int):
+def create_buttons(button_names, title_bottom: int, button_height: int):
     button_text_size = int(36 * scale)
     button_font = pygame.font.Font(font_name, button_text_size)
 
     gap = int(32 * scale)
     margin = int(40 * scale)
-    button_names = ("Jouer", "Tutoriel", "Calibration", "Quitter")
     total_height = len(button_names) * (button_height + gap) - gap
     start_y = (
         title_bottom + margin + (height - title_bottom - margin - total_height) // 2
@@ -151,6 +124,43 @@ def create_buttons(title_bottom: int, button_height: int):
         buttons[name] = (text, text_rect)
 
     return buttons
+
+
+def find_hovered_button(buttons, button_width: int, button_height: int) -> str:
+    for name, (_, text_rect) in buttons.items():
+        rect = pygame.Rect(
+            text_rect.center[0] - button_width // 2,
+            text_rect.y - button_height // 4,
+            button_width,
+            button_height,
+        )
+        if rect.collidepoint(pygame.mouse.get_pos()):
+            return name
+    return ""
+
+
+def draw_button(
+    screen: pygame.Surface,
+    text: pygame.Surface,
+    rect: pygame.Rect,
+    button_width: int,
+    button_height: int,
+    color: str,
+):
+    rect_to_draw = pygame.Rect(
+        rect.center[0] - button_width // 2,
+        rect.y - button_height // 4,
+        button_width,
+        button_height,
+    )
+
+    pygame.draw.rect(
+        screen,
+        color,
+        rect_to_draw,
+        border_radius=5,
+    )
+    screen.blit(text, rect)
 
 
 if __name__ == "__main__":
@@ -191,21 +201,43 @@ if __name__ == "__main__":
     title_rect = title.get_rect()
     title_rect.center = (width // 2, height // 5)
 
+    button_names = ("Jouer", "Tutoriel", "Quitter")
+    button_width = int(255 * scale)
     button_height = int(76 * scale)
-    buttons = create_buttons(title_rect.bottom, button_height)
+    buttons = create_buttons(button_names, title_rect.bottom, button_height)
 
     is_running = True
     while is_running:
+        # Update
+        left_clicked = False
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 is_running = False
+            else:
+                # Note: this event checks for single click; pygame.mouse.get_pressed()
+                # reports a held button, which is not the desired behavior.
+                left_clicked = (
+                    event.type == pygame.MOUSEBUTTONDOWN and event.button == 1
+                )
 
+        hovered_button = find_hovered_button(buttons, button_width, button_height)
+        if left_clicked:
+            if hovered_button == "Jouer":
+                print("Gonna play")
+            elif hovered_button == "Tutoriel":
+                print("Gonna show the tutorial")
+            elif hovered_button == "Quitter":
+                is_running = False
+
+        # Draw
         screen.fill("#014F84")
-
         screen.blit(title, title_rect)
 
-        for text, text_rect in buttons.values():
-            draw_button(screen, text, text_rect, button_height)
+        for name, (text, text_rect) in buttons.items():
+            color = "white"
+            if name == hovered_button:
+                color = "#D6EFFE" if left_clicked else "#E8F4FF"
+            draw_button(screen, text, text_rect, button_width, button_height, color)
 
         pygame.display.flip()
         clock.tick(fps)
