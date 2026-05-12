@@ -7,5 +7,6 @@ requires-python = ">=3.12"
 dependencies = [
     "matplotlib>=3.10.9",
     "plux>=1.16.0",
+    "pygame>=2.6.1",
     "pyqt6>=6.11.0",
 ]
