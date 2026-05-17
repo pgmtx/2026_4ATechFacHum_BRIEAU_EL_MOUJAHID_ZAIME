@@ -196,6 +196,7 @@ class AcquisitionThread(threading.Thread):
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
     import matplotlib.patches as mpatches
+    from collections import deque
 
     print("=" * 50)
     print("TEST ACQUISITION REELLE — ChunkyMemo")
@@ -206,114 +207,237 @@ if __name__ == "__main__":
         sys.exit(1)
 
     print()
-    print("Assurez-vous que le BITalino est :")
-    print("  - Allume (LED verte)")
-    print("  - Bluetooth appaire a cet ordinateur")
     print(f"  - PPG branche sur port {config.ACTIVE_PORTS[config.IDX_PPG]}")
     print(f"  - PZT branche sur port {config.ACTIVE_PORTS[config.IDX_PZT]}")
     print()
-    print("Pendant les 10 secondes : tapez Z/S/Q/D + Entree pour marquer des fleches")
+    print("Pendant le test : tapez Z/S/Q/D + Entree pour marquer des fleches")
     print()
     input("Appuyez sur Entree pour demarrer...")
     print()
 
-    KEYMAP = {
-        "z":"UP","Z":"UP","s":"DOWN","S":"DOWN",
-        "q":"LEFT","Q":"LEFT","d":"RIGHT","D":"RIGHT",
-    }
-    ARROW_SYMBOL = {"UP":"haut","DOWN":"bas","LEFT":"gauche","RIGHT":"droite"}
-    ARROW_COLOR  = {"UP":"green","DOWN":"red","LEFT":"blue","RIGHT":"purple"}
+    TEST_DURATION = 30
+    WINDOW_SHOW   = 10.0
+    REFRESH_SEC   = 0.1
 
-    key_events      = []
-    key_events_lock = threading.Lock()
-
-    def keyboard_listener(start_time, stop_flag):
-        while not stop_flag[0]:
-            try:
-                raw = input()
-                ts  = time.time() - start_time
-                d   = KEYMAP.get(raw.strip())
-                if d:
-                    with key_events_lock:
-                        key_events.append((ts, d))
-                    print(f"  Fleche {ARROW_SYMBOL[d]} enregistree a t={ts:.2f}s")
-            except (EOFError, KeyboardInterrupt):
-                break
-
-    data_q    = queue.Queue(maxsize=config.QUEUE_MAXSIZE)
-    acq       = AcquisitionThread(data_q)
-    acq.start()
-
-    TEST_DURATION = 10
-    start         = time.time()
-    stop_flag     = [False]
-
-    kb_thread = threading.Thread(
-        target=keyboard_listener, args=(start, stop_flag), daemon=True)
-    kb_thread.start()
+    KEYMAP      = {"z":"UP","Z":"UP","s":"DOWN","S":"DOWN",
+                   "q":"LEFT","Q":"LEFT","d":"RIGHT","D":"RIGHT"}
+    ARROW_LABEL = {"UP":"fleche haut","DOWN":"fleche bas",
+                   "LEFT":"fleche gauche","RIGHT":"fleche droite"}
+    ARROW_COLOR = {"UP":"green","DOWN":"red","LEFT":"blue","RIGHT":"purple"}
+    DIR_Y       = {"LEFT":0,"DOWN":1,"UP":2,"RIGHT":3}
 
     all_ppg, all_pzt, all_ts = [], [], []
-    print(f"Collecte en cours ({TEST_DURATION}s)...")
+    key_events      = []
+    key_events_lock = threading.Lock()
+    stop_flag       = [False]   # utilise pour arreter la boucle principale
 
-    while time.time() - start < TEST_DURATION:
-        try:
-            sample = data_q.get(timeout=0.1)
-            all_ppg.append(sample["ppg"])
-            all_pzt.append(sample["pzt"])
-            all_ts.append(sample["ts"] - start)
-        except queue.Empty:
-            pass
+    # Desactiver les raccourcis clavier par defaut de matplotlib
+    # qui entrent en conflit avec nos touches de jeu :
+    #   s → save figure    q → quit    z/Z → zoom
+    #   d → xscale         g → grid    p → pan
+    import matplotlib
+    for key in ['s', 'q', 'z', 'Z', 'd', 'g', 'p', 'f', 'h', 'l']:
+        if key in matplotlib.rcParams.get('keymap.save', []):
+            matplotlib.rcParams['keymap.save'].remove(key)
+        if key in matplotlib.rcParams.get('keymap.quit', []):
+            matplotlib.rcParams['keymap.quit'].remove(key)
+        if key in matplotlib.rcParams.get('keymap.zoom', []):
+            matplotlib.rcParams['keymap.zoom'].remove(key)
+        if key in matplotlib.rcParams.get('keymap.xscale', []):
+            matplotlib.rcParams['keymap.xscale'].remove(key)
+        if key in matplotlib.rcParams.get('keymap.yscale', []):
+            matplotlib.rcParams['keymap.yscale'].remove(key)
+        if key in matplotlib.rcParams.get('keymap.grid', []):
+            matplotlib.rcParams['keymap.grid'].remove(key)
+        if key in matplotlib.rcParams.get('keymap.pan', []):
+            matplotlib.rcParams['keymap.pan'].remove(key)
+        if key in matplotlib.rcParams.get('keymap.fullscreen', []):
+            matplotlib.rcParams['keymap.fullscreen'].remove(key)
+        if key in matplotlib.rcParams.get('keymap.home', []):
+            matplotlib.rcParams['keymap.home'].remove(key)
+        if key in matplotlib.rcParams.get('keymap.back', []):
+            matplotlib.rcParams['keymap.back'].remove(key)
 
-    stop_flag[0] = True
+    # Detection des touches directement dans la fenetre matplotlib
+    # input() dans un thread ne marche pas sous Windows quand matplotlib est actif
+    # mpl_connect capte les touches peu importe ou est le focus
+    def on_key_press(event):
+        ts = time.time() - start
+        d  = KEYMAP.get(event.key)
+        if d:
+            with key_events_lock:
+                key_events.append((ts, d))
+            print(f"  -> {ARROW_LABEL[d]} a t={ts:.2f}s")
+
+    # Demarrer acquisition
+    data_q = queue.Queue(maxsize=config.QUEUE_MAXSIZE)
+    acq    = AcquisitionThread(data_q)
+    acq.start()
+    start  = time.time()
+
+    # Graphique temps reel — 3 subplots
+    plt.ion()
+    fig, (ax_ppg, ax_pzt, ax_keys) = plt.subplots(3, 1, figsize=(14, 9), sharex=False)
+    fig.suptitle("Acquisition temps reel ChunkyMemo", fontsize=12)
+
+    line_ppg, = ax_ppg.plot([], [], color="tab:red",    linewidth=0.9)
+    line_pzt, = ax_pzt.plot([], [], color="tab:orange", linewidth=0.9)
+
+    ax_ppg.set_ylabel("PPG (pouls)")
+    ax_ppg.set_title("Photoplethysmographie")
+    ax_ppg.grid(True, alpha=0.3)
+
+    ax_pzt.set_ylabel("PZT (respiration)")
+    ax_pzt.set_title("Respiration piezzoelectrique")
+    ax_pzt.grid(True, alpha=0.3)
+
+    ax_keys.set_ylabel("Fleches")
+    ax_keys.set_xlabel("Temps (secondes)")
+    ax_keys.set_title("Fleches tapees au clavier")
+    ax_keys.set_ylim(-0.5, 3.5)
+    ax_keys.set_yticks([0, 1, 2, 3])
+    ax_keys.set_yticklabels(["gauche", "bas", "haut", "droite"], fontsize=9)
+    ax_keys.grid(True, alpha=0.2)
+
+    plt.tight_layout()
+    # mpl_connect capte les touches dans la fenetre matplotlib sans bloquer
+    fig.canvas.mpl_connect('key_press_event', on_key_press)
+
+    print(f"Acquisition en cours ({TEST_DURATION}s)...")
+    print("Cliquez sur la fenetre et tapez Z/S/Q/D pour marquer des fleches")
+
+    # FuncAnimation — rafraichit le graphique a interval regulier
+    # sans jamais bloquer la fenetre ni la boucle d'evenements
+    from matplotlib.animation import FuncAnimation
+
+    def update_graph(frame):
+        # Vider la queue — prendre tous les echantillons disponibles
+        while not data_q.empty():
+            try:
+                s = data_q.get_nowait()
+                all_ppg.append(s["ppg"])
+                all_pzt.append(s["pzt"])
+                all_ts.append(s["ts"] - start)
+            except queue.Empty:
+                break
+
+        if len(all_ts) < 2:
+            return line_ppg, line_pzt
+
+        t_now = all_ts[-1]
+        t_min = max(0, t_now - WINDOW_SHOW)
+
+        # Mettre a jour PPG et PZT
+        mask = [i for i, t in enumerate(all_ts) if t >= t_min]
+        if mask:
+            ts_w  = [all_ts[i]  for i in mask]
+            ppg_w = [all_ppg[i] for i in mask]
+            pzt_w = [all_pzt[i] for i in mask]
+
+            line_ppg.set_data(ts_w, ppg_w)
+            line_pzt.set_data(ts_w, pzt_w)
+
+            ax_ppg.set_xlim(t_min, t_now + 0.5)
+            ax_ppg.set_ylim(min(ppg_w) - 5, max(ppg_w) + 5)
+            ax_pzt.set_xlim(t_min, t_now + 0.5)
+            ax_pzt.set_ylim(min(pzt_w) - 5, max(pzt_w) + 5)
+
+        # Mettre a jour le subplot fleches
+        ax_keys.cla()
+        ax_keys.set_ylabel("Fleches")
+        ax_keys.set_xlabel("Temps (secondes)")
+        ax_keys.set_title("Fleches tapees au clavier")
+        ax_keys.set_ylim(-0.5, 3.5)
+        ax_keys.set_yticks([0, 1, 2, 3])
+        ax_keys.set_yticklabels(["gauche", "bas", "haut", "droite"], fontsize=9)
+        ax_keys.set_xlim(t_min, t_now + 0.5)
+        ax_keys.grid(True, alpha=0.2)
+
+        with key_events_lock:
+            keys_snap = list(key_events)
+
+        for ts_k, d in keys_snap:
+            if ts_k >= t_min:
+                ax_keys.scatter(ts_k, DIR_Y[d],
+                                color=ARROW_COLOR[d], s=120, zorder=5, marker="D")
+                ax_keys.annotate(
+                    {"UP":"haut","DOWN":"bas","LEFT":"gauche","RIGHT":"droite"}[d],
+                    xy=(ts_k, DIR_Y[d]), fontsize=11, ha="center", va="bottom",
+                    color=ARROW_COLOR[d], fontweight="bold"
+                )
+
+        remaining = max(0, TEST_DURATION - t_now)
+        fig.suptitle(f"Acquisition temps reel — {remaining:.0f}s restantes", fontsize=12)
+
+        # Arreter l'animation quand la duree est ecoulee
+        if t_now >= TEST_DURATION:
+            ani.event_source.stop()
+
+        return line_ppg, line_pzt
+
+    # interval=100ms = 10 fps — assez rapide pour voir les signaux, assez lent pour ne pas bloquer
+    ani = FuncAnimation(fig, update_graph, interval=100, blit=False, cache_frame_data=False)
+    plt.show(block=True)   # block=True = attend la fin de l'animation avant de continuer
+
+    stop_flag[0] = True   # signal d'arret de la boucle
     acq.stop()
     time.sleep(0.3)
+    plt.ioff()
 
     with key_events_lock:
         captured_keys = list(key_events)
 
-    print()
     if not all_ppg:
         print("AUCUNE donnee recue — verifiez la connexion BITalino")
         sys.exit(1)
 
+    print()
     print(f"Collecte      : {len(all_ppg)} echantillons")
     print(f"Freq. effect. : {len(all_ppg) / TEST_DURATION:.1f} Hz")
     print(f"Fleches tapees: {len(captured_keys)}")
-    print(f"PPG — min={min(all_ppg):6d}  max={max(all_ppg):6d}  "
-          f"amplitude={max(all_ppg)-min(all_ppg):6d}")
-    print(f"PZT — min={min(all_pzt):6d}  max={max(all_pzt):6d}  "
-          f"amplitude={max(all_pzt)-min(all_pzt):6d}")
-    print()
+    print(f"PPG amplitude : {max(all_ppg)-min(all_ppg)}")
+    print(f"PZT amplitude : {max(all_pzt)-min(all_pzt)}")
 
-    fig, axes = plt.subplots(2, 1, figsize=(14, 7), sharex=True)
-    fig.suptitle("Test acquisition reelle ChunkyMemo — PPG + PZT + fleches", fontsize=13)
+    # Graphique final — session complete
+    fig2, (ax2_ppg, ax2_pzt, ax2_keys) = plt.subplots(3, 1, figsize=(14, 9), sharex=True)
+    fig2.suptitle(
+        f"Session complete — {TEST_DURATION}s  |  {len(captured_keys)} fleches", fontsize=13)
 
-    axes[0].plot(all_ts, all_ppg, color="tab:red", linewidth=0.8)
-    axes[0].set_ylabel("PPG (pouls)")
-    axes[0].set_title("Photoplethysmographie")
+    ax2_ppg.plot(all_ts, all_ppg, color="tab:red", linewidth=0.8)
+    ax2_ppg.set_ylabel("PPG (pouls)")
+    ax2_ppg.set_title("Photoplethysmographie")
+    ax2_ppg.grid(True, alpha=0.3)
 
-    axes[1].plot(all_ts, all_pzt, color="tab:orange", linewidth=0.8)
-    axes[1].set_ylabel("PZT (respiration)")
-    axes[1].set_xlabel("Temps (secondes)")
-    axes[1].set_title("Respiration piezzoelectrique")
+    ax2_pzt.plot(all_ts, all_pzt, color="tab:orange", linewidth=0.8)
+    ax2_pzt.set_ylabel("PZT (respiration)")
+    ax2_pzt.set_title("Respiration piezzoelectrique")
+    ax2_pzt.grid(True, alpha=0.3)
 
-    for ts_k, direction in captured_keys:
-        col = ARROW_COLOR[direction]
-        for ax in axes:
-            ax.axvline(x=ts_k, color=col, linewidth=1.5, alpha=0.7, linestyle="--")
-        if all_ppg:
-            axes[0].annotate(
-                {"UP":"haut","DOWN":"bas","LEFT":"gauche","RIGHT":"droite"}[direction],
-                xy=(ts_k, max(all_ppg)), fontsize=10, color=col,
-                ha="center", va="bottom", fontweight="bold"
-            )
+    ax2_keys.set_ylabel("Fleches")
+    ax2_keys.set_xlabel("Temps (secondes)")
+    ax2_keys.set_title("Fleches tapees")
+    ax2_keys.set_ylim(-0.5, 3.5)
+    ax2_keys.set_yticks([0, 1, 2, 3])
+    ax2_keys.set_yticklabels(["gauche", "bas", "haut", "droite"], fontsize=9)
+    ax2_keys.grid(True, alpha=0.2)
+
+    for ts_k, d in captured_keys:
+        col = ARROW_COLOR[d]
+        ax2_ppg.axvline(x=ts_k, color=col, linewidth=1.2, alpha=0.6, linestyle="--")
+        ax2_pzt.axvline(x=ts_k, color=col, linewidth=1.2, alpha=0.6, linestyle="--")
+        ax2_keys.scatter(ts_k, DIR_Y[d], color=col, s=120, zorder=5, marker="D")
+        ax2_keys.annotate(
+            {"UP":"haut","DOWN":"bas","LEFT":"gauche","RIGHT":"droite"}[d],
+            xy=(ts_k, DIR_Y[d]), fontsize=11, ha="center", va="bottom",
+            color=col, fontweight="bold"
+        )
 
     if captured_keys:
-        patches = [mpatches.Patch(color=ARROW_COLOR[d], label=ARROW_SYMBOL[d])
+        patches = [mpatches.Patch(color=ARROW_COLOR[d], label=ARROW_LABEL[d])
                    for d in ["UP","DOWN","LEFT","RIGHT"]
                    if any(ev[1]==d for ev in captured_keys)]
-        axes[0].legend(handles=patches, loc="upper right", fontsize=9)
+        ax2_ppg.legend(handles=patches, loc="upper right", fontsize=9)
 
     plt.tight_layout()
     plt.show()
-    print("Fermez la fenetre matplotlib pour quitter.")
+    print("Fermez la fenetre pour quitter.")
