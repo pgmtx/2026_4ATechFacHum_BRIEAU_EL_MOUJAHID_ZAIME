@@ -43,15 +43,14 @@ RESOLUTION    = 16    # bits
 DURATION_MAX  = 3600  # secondes max par session
  
 # ==============================================================
-# PORTS BITALINO — PPG + PZT uniquement (ACC desactive)
+# PORTS BITALINO — PPG + PZT uniquement
 # ==============================================================
 # Branchement physique :
 #   Port 3 (A3) → PPG  (pince doigt, capteur de pouls)
 #   Port 4 (A4) → PZT  (ceinture thoracique, respiration)
 #
-# ACC desactive pour le moment.
-# Pour le reactiver plus tard : ajouter [1, 2] dans ACTIVE_PORTS
-# et definir IDX_ACC_X = 0, IDX_ACC_Y = 1, puis decaler IDX_PPG/PZT.
+# L'ACC n'est plus utilise — le joueur utilise le clavier.
+# Touches : Z=haut  S=bas  Q=gauche  D=droite
  
 ACTIVE_PORTS = [3, 4]   # port 3 = PPG,  port 4 = PZT
  
@@ -60,6 +59,15 @@ ACTIVE_PORTS = [3, 4]   # port 3 = PPG,  port 4 = PZT
 #   data[1] → deuxieme port de ACTIVE_PORTS → port 4 → PZT
 IDX_PPG = 0
 IDX_PZT = 1
+
+# ==============================================================
+# CONSTANTES ACC (conservees pour compatibilite signal_processing.py)
+# ==============================================================
+# Le GestureDetector n'est plus appele dans le jeu (remplacement
+# par clavier), mais la classe existe encore dans signal_processing.py.
+ACC_CALIB_SAMPLES = 100    # echantillons de calibration au repos
+ACC_THRESHOLD     = 2000   # seuil de detection de geste (unites brutes)
+ACC_DEBOUNCE_SEC  = 0.5    # secondes minimum entre deux gestes
  
 # ==============================================================
 # TRAITEMENT SIGNAL PPG (frequence cardiaque)

@@ -46,7 +46,7 @@ from datetime import datetime
 from collections import deque
 
 import config
-from signal_processing import GestureDetector, PPGProcessor, PZTProcessor, SessionData
+from signal_processing import PPGProcessor, PZTProcessor, SessionData
 
 # ==============================================================
 # IMPORT PLUX — copie exacte de la structure du prof
@@ -85,14 +85,14 @@ if PLUX_AVAILABLE:
             self._last_print = 0
 
         def onRawFrame(self, nSeq, data):
-            # Construction du sample — index depuis config.py
+            # Construction du sample — PPG + PZT uniquement (pas d'ACC)
             sample = {
                 "ts":    time.time(),
                 "nSeq":  nSeq,
-                "acc_x": int(data[config.IDX_ACC_X]),
-                "acc_y": int(data[config.IDX_ACC_Y]),
                 "ppg":   int(data[config.IDX_PPG]),
                 "pzt":   int(data[config.IDX_PZT]),
+                "acc_x": 0,   # pas d'ACC — champ conserve pour compatibilite CSV
+                "acc_y": 0,
             }
             try:
                 self.data_queue.put_nowait(sample)
@@ -128,10 +128,11 @@ class AcquisitionThread(threading.Thread):
         self.simulating = not PLUX_AVAILABLE
 
     def run(self):
-        if PLUX_AVAILABLE:
-            self._run_real()
-        else:
-            self._run_sim()
+        if not PLUX_AVAILABLE:
+            print("[acquisition] ERREUR : plux non disponible et simulation desactivee.")
+            print("  Verifiez l'installation de plux et la connexion BITalino.")
+            return
+        self._run_real()
 
     def _run_real(self):
         """Acquisition réelle — structure identique à exampleAcquisition() du prof."""
@@ -146,10 +147,11 @@ class AcquisitionThread(threading.Thread):
             self.device.loop()   # bloque jusqu'à stop_event
 
         except Exception as e:
-            print(f"[BITalino] Erreur : {e}")
-            print("[BITalino] → Bascule simulation")
-            self.simulating = True
-            self._run_sim()
+            print(f"[BITalino] Erreur connexion : {e}")
+            print("[BITalino] Verifiez :")
+            print(f"  1. BITalino allume et bluetooth actif")
+            print(f"  2. Adresse MAC dans config.py : {config.MAC_ADDRESS}")
+            print(f"  3. Ports branches : {config.ACTIVE_PORTS}")
         finally:
             if self.device:
                 try:
@@ -157,57 +159,6 @@ class AcquisitionThread(threading.Thread):
                     self.device.close()
                 except Exception:
                     pass
-
-    def _run_sim(self):
-        """
-        Simulation réaliste — signaux synthétiques avec effets de charge cognitive.
-        La charge augmente avec le niveau du jeu (reçu via shared_state).
-        """
-        print("[SIM] Simulation démarrée")
-        t  = 0.0
-        dt = 1.0 / config.SAMPLING_RATE
-        ns = 0
-
-        while not self.stop_event.is_set():
-            t  += dt
-            ns += 1
-
-            # Récupère le niveau courant du jeu (pour simuler l'effet charge)
-            level = getattr(self, "current_level", 1)
-            load  = max(0.0, (level - 4) / 6.0)   # 0 aux niveaux 1-4, monte ensuite
-
-            # ACC : repos + bruit
-            acc_x = 32768 + int(300 * math.sin(0.2*t) + random.gauss(0, 80))
-            acc_y = 32768 + int(200 * math.cos(0.15*t) + random.gauss(0, 80))
-
-            # PPG : onde de pouls (FC augmente avec la charge)
-            bpm   = 68 + 12 * load + random.gauss(0, 1)
-            freq  = bpm / 60.0
-            ppg   = 32768 + int(
-                6000 * math.sin(2*math.pi*freq*t) *
-                max(0, math.sin(2*math.pi*freq*t)) +
-                random.gauss(0, 150)
-            )
-
-            # PZT : respiration (pauses sous charge élevée)
-            # load > 0.5 → on simule des pauses (amplitude réduite aléatoirement)
-            resp_amp = 10000 * (1 - 0.4 * load)
-            if load > 0.5 and random.random() < 0.002:   # pause courte ~2% du temps
-                resp_amp = 500
-            pzt = 32768 + int(
-                resp_amp * math.sin(2*math.pi*0.25*t) +
-                random.gauss(0, 80)
-            )
-
-            sample = {"ts": time.time(), "nSeq": ns,
-                      "acc_x": acc_x, "acc_y": acc_y,
-                      "ppg": ppg, "pzt": pzt}
-            try:
-                self.data_queue.put_nowait(sample)
-            except queue.Full:
-                pass
-
-            time.sleep(dt)
 
     def stop(self):
         self.stop_event.set()
@@ -438,12 +389,11 @@ class SensorProcessor:
         self.data_queue  = data_queue
         self.ppg_proc    = PPGProcessor()
         self.pzt_proc    = PZTProcessor()
-        self.gest_detect = GestureDetector()
 
         # Dernières métriques calculées (thread-safe grâce au GIL Python)
         self.heart_rate  = None   # bpm
         self.resp_rate   = None   # rpm
-        self.last_gesture = None
+        self.simulating  = False  # toujours False (simulation supprimée)
 
         # Buffers pour affichage ASCII
         self.ppg_display = deque(maxlen=40)
@@ -491,10 +441,7 @@ class SensorProcessor:
                     if rr:
                         self.resp_rate = rr
 
-                    # Détection geste ACC
-                    g = self.gest_detect.update(sample["acc_x"], sample["acc_y"])
-                    if g:
-                        self.last_gesture = g
+                    # ACC non utilisé (clavier utilisé à la place)
 
             except queue.Empty:
                 pass
@@ -620,13 +567,10 @@ class ChunkyMemoGame:
   {C.YELLOW}Règles :{C.RESET}
   1. Une séquence de flèches s'affiche {self.MEMORIZE_SEC:.0f} secondes
   2. Elle disparaît
-  3. Vous reproduisez en inclinant le poignet :
-     Poignet ↑ = haut   ↓ = bas
-     Poignet ← = gauche  → = droite
+  3. Vous reproduisez au clavier :
+     Z = haut   S = bas
+     Q = gauche   D = droite
   4. Chaque niveau ajoute une flèche
-
-  {C.GRAY}Restez IMMOBILE les 2 premières secondes
-  pour calibrer l'accéléromètre au repos{C.RESET}
 
 {C.BOLD}{'='*60}{C.RESET}
 """)
@@ -665,11 +609,9 @@ class ChunkyMemoGame:
                 time.sleep(1)
             print()
 
-            # ── Phase REPRODUCTION — via gestes ACC ───────────────
-            # Le joueur incline le poignet pour reproduire la séquence.
-            # On attend les gestes en temps réel depuis le SensorProcessor.
-            # L'écran se met à jour à chaque geste détecté.
-            player_input = self._collect_gestures(seq_len)
+            # ── Phase REPRODUCTION — via clavier ──────────────────
+            # Le joueur tape Z/S/Q/D pour reproduire la séquence.
+            player_input = self._collect_keyboard(seq_len)
 
             # ── Vérification ───────────────────────────────────────
             success = (player_input == sequence)
@@ -738,90 +680,32 @@ class ChunkyMemoGame:
                          self.sensor_proc.pzt_display)
         time.sleep(1.0)
 
-    def _collect_gestures(self, seq_len: int) -> list:
+    def _collect_keyboard(self, seq_len: int) -> list:
         """
-        Attend seq_len gestes de l'accéléromètre et les retourne.
+        Lit seq_len directions au clavier et les retourne.
+        Remplace _collect_gestures (ACC supprime).
 
-        Fonctionnement :
-          - Boucle active qui lit self.sensor_proc.last_gesture
-          - Chaque nouveau geste est affiché immédiatement à l'écran
-          - L'écran se rafraîchit à 10 Hz pour montrer les signaux capteurs
-          - Timeout de 30 secondes par geste (évite un blocage infini)
-
-        Le joueur voit en permanence :
-          - Les flèches déjà tapées (vertes) et le curseur courant
-          - Les mini-graphiques PPG et PZT en temps réel
-          - Le geste détecté en gros au centre
+        Touches : Z=↑  S=↓  Q=←  D=→  (ou mots complets up/down/left/right)
+        L'écran affiche la progression en temps réel + les mini-graphiques capteurs.
         """
-        GESTURE_TIMEOUT = 30.0   # secondes max par geste
-        REFRESH_HZ      = 10     # rafraîchissement écran
+        PLACEHOLDER = ["?"] * seq_len
 
-        player_input   = []
-        last_seen_gest = self.sensor_proc.last_gesture   # état initial → ignorer
-        PLACEHOLDER    = ["?"] * seq_len                 # pour print_reproduce_prompt
+        # Affichage de la phase
+        clear()
+        print_header(
+            self.mode, self.level, self.score,
+            self.sensor_proc.heart_rate,
+            self.sensor_proc.resp_rate,
+            self.acq_thread.simulating
+        )
+        print(f"\n  {C.BOLD}Reproduisez la séquence au clavier !{C.RESET}")
+        print(f"  {C.GRAY}Z=↑  S=↓  Q=←  D=→  (une par une + Entrée, ou tout d'un coup){C.RESET}\n")
+        print_sensor_bar(self.sensor_proc.ppg_display, self.sensor_proc.pzt_display)
+        print()
 
-        while len(player_input) < seq_len:
-            idx     = len(player_input)       # index du geste attendu
-            t_start = time.time()
-            got_gesture = False
+        player_input = read_full_sequence(seq_len)
 
-            while not got_gesture:
-                # ── Timeout de sécurité ──────────────────────────────
-                if time.time() - t_start > GESTURE_TIMEOUT:
-                    print(f"\n  {C.RED}Timeout — pas de geste détecté{C.RESET}")
-                    # On marque un geste invalide pour continuer le jeu
-                    player_input.append("TIMEOUT")
-                    got_gesture = True
-                    break
-
-                # ── Nouveau geste détecté par le SensorProcessor ? ───
-                current_gest = self.sensor_proc.last_gesture
-                if current_gest is not None and current_gest != last_seen_gest:
-                    last_seen_gest = current_gest
-                    player_input.append(current_gest)
-                    got_gesture = True
-                    # Petit délai pour éviter qu'un seul geste soit compté deux fois
-                    # (le debounce dans GestureDetector gère ça, mais double protection)
-                    time.sleep(0.1)
-
-                # ── Rafraîchissement de l'écran ──────────────────────
-                clear()
-                print_header(
-                    self.mode, self.level, self.score,
-                    self.sensor_proc.heart_rate,
-                    self.sensor_proc.resp_rate,
-                    self.acq_thread.simulating
-                )
-
-                # Titre de la phase
-                print(f"\n  {C.BOLD}Reproduisez avec votre poignet !{C.RESET}")
-                print(f"  {C.GRAY}Inclinez le BITalino dans la bonne direction{C.RESET}\n")
-
-                # Progression de la séquence
-                print_reproduce_prompt(PLACEHOLDER, player_input)
-
-                # Dernier geste détecté affiché en grand
-                if current_gest and current_gest != "TIMEOUT":
-                    arrow_big = ARROW.get(current_gest, "?")
-                    elapsed   = time.time() - t_start
-                    print(f"\n  {C.YELLOW}{C.BOLD}Dernier geste : {arrow_big}  "
-                          f"{C.RESET}{C.GRAY}(il y a {elapsed:.1f}s){C.RESET}")
-                else:
-                    print(f"\n  {C.GRAY}En attente du geste {idx+1}/{seq_len}...{C.RESET}")
-
-                # Guide visuel des directions
-                print(f"\n  {C.GRAY}Poignet ↑ = haut  ↓ = bas  ← = gauche  → = droite{C.RESET}")
-
-                # Mini-graphiques capteurs
-                print()
-                print_sensor_bar(
-                    self.sensor_proc.ppg_display,
-                    self.sensor_proc.pzt_display
-                )
-
-                time.sleep(1.0 / REFRESH_HZ)
-
-        # Affichage final de tous les gestes collectés
+        # Affichage final récapitulatif
         clear()
         print_header(
             self.mode, self.level, self.score,

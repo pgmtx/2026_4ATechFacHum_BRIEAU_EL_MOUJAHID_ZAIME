@@ -16,7 +16,7 @@ from signal_processing import SessionData, PPGProcessor, PZTProcessor
 #PALETTE DE COULEURS 
 
 COLOR_NORMAL   = "#E24B4A"    # rouge pour mode normal (plus difficile)
-COLOR_CHUNKING = "#1D9E75"    # vert  pour mode chunking (facilité par regroupement)
+COLOR_CHUNKING = "#1D9E75"    # vert  pour mode chunking (facilite par regroupement)
 COLOR_PPG      = "#E24B4A"    # rouge pour PPG
 COLOR_PZT      = "#EF9F27"    # orange pour PZT
 COLOR_GRID     = "#EEEEEE"
