@@ -235,15 +235,35 @@ class TutorialState(State):
 class CalibrationState(State):
     def __init__(self, game: Game) -> None:
         self.game = game
-        self.start = pygame.time.get_ticks()
         self.calibration_duration = 20 * 1000  # ms
         self.title, self.title_rect = get_title(game, "CALIBRATION", 64)
+        self.inited = False
+        self.start = 0
+        self.end = 0
+        bar_height = int(10 * self.game.scale)
+        self.bg_rect = pygame.Rect(
+            0,
+            self.game.height - bar_height,
+            self.game.width,
+            bar_height,
+        )
+        self.rect = self.bg_rect.copy()
 
     def update(self):
-        if pygame.time.get_ticks() - self.start > self.calibration_duration:
+        if not self.inited:
+            self.start = pygame.time.get_ticks()
+            self.inited = True
+
+        self.end = pygame.time.get_ticks()
+        if self.end - self.start > self.calibration_duration:
             self.game.current_state = self.game.states["game"]
 
     def draw(self):
+        pygame.draw.rect(self.game.screen, "#434c54", self.bg_rect)
+        self.rect.w = (
+            self.game.width * (self.end - self.start) // self.calibration_duration
+        )
+        pygame.draw.rect(self.game.screen, "white", self.rect)
         self.game.screen.blit(self.title, self.title_rect)
 
 
