@@ -1,8 +1,12 @@
+import os
 import platform
 import sys
 
 import matplotlib.pyplot as plt
 import plux
+
+# Hides pygame welcome message
+os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
 import pygame
 
 from game import Game
@@ -103,7 +107,6 @@ def exampleAcquisition(
 
 if __name__ == "__main__":
     # exampleAcquisition("98:D3:11:FE:03:67")
-
     pygame.init()
 
     game = Game()

@@ -276,6 +276,10 @@ class CalibrationState(State):
             self.start = pygame.time.get_ticks()
             self.inited = True
 
+        keys = pygame.key.get_pressed()
+        if keys[pygame.K_SPACE]:
+            self.game.current_state = self.game.states["game"]
+
         self.end = pygame.time.get_ticks()
         if self.end - self.start > self.calibration_duration:
             self.game.current_state = self.game.states["game"]
@@ -294,9 +298,36 @@ class GameState(State):
     def __init__(self, game: Game) -> None:
         self.game = game
         self.title, self.title_rect = get_title(game, "JEU", 64)
+        self.arrows_count = 6
+
+        self.arrow_size = int(96 * game.scale)
+        margin = 20
+        spacing_const = 40  # mettez la valeur d'écart fixe souhaitée en pixels
+
+        total_arrows_width = self.arrow_size * self.arrows_count
+        total_row_width = (
+            total_arrows_width + max(0, (self.arrows_count - 1)) * spacing_const
+        )
+
+        # centrer la rangée ; si la ligne est plus large que l'espace utilisable, start_x peut être < margin
+        usable_width = game.width - 2 * margin
+        start_x = margin + (usable_width - total_row_width) / 2
+
+        self.square_y = (game.height - self.arrow_size) // 2
+        self.square_x_positions = [
+            int(start_x + i * (self.arrow_size + spacing_const))
+            for i in range(self.arrows_count)
+        ]
 
     def update(self):
         pass
 
     def draw(self):
         self.game.screen.blit(self.title, self.title_rect)
+
+        for x in self.square_x_positions:
+            pygame.draw.rect(
+                self.game.screen,
+                "white",
+                (x, self.square_y, self.arrow_size, self.arrow_size),
+            )
