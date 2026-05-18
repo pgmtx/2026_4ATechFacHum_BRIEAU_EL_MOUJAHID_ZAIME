@@ -2,6 +2,30 @@ import sys
 
 import pygame
 
+fonts = dict[int, pygame.font.Font]()
+
+
+def create_text(
+    label: str,
+    font_size: int,
+    center_x: int,
+    center_y: int,
+    scale: float,
+    color: str = "white",
+) -> tuple[pygame.Surface, pygame.Rect]:
+    font_name = pygame.font.get_default_font()
+    text_size = int(font_size * scale)
+
+    # Avoids font duplicates
+    if text_size not in fonts:
+        fonts[text_size] = pygame.font.Font(font_name, text_size)
+    text_font = fonts[text_size]
+
+    text = text_font.render(label, True, color)
+    text_rect = text.get_rect()
+    text_rect.center = (center_x, center_y)
+    return text, text_rect
+
 
 def create_buttons(
     width: int,
@@ -11,9 +35,7 @@ def create_buttons(
     button_height: int,
     scale: float,
 ):
-    font_name = pygame.font.get_default_font()
-    button_text_size = int(36 * scale)
-    button_font = pygame.font.Font(font_name, button_text_size)
+    button_text_size = 36
 
     gap = int(32 * scale)
     margin = int(40 * scale)
@@ -24,13 +46,14 @@ def create_buttons(
 
     buttons = {}
     for i, name in enumerate(button_names):
-        text = button_font.render(name, True, "#014F84")
-        text_rect = text.get_rect()
-        text_rect.center = (
+        buttons[name] = create_text(
+            name,
+            button_text_size,
             width // 2,
             start_y + i * (button_height + gap),
+            scale,
+            "#014F84",
         )
-        buttons[name] = (text, text_rect)
 
     return buttons
 
@@ -140,13 +163,7 @@ class State:
 def get_title(
     game: Game, label: str, font_size: int
 ) -> tuple[pygame.Surface, pygame.Rect]:
-    font_name = pygame.font.get_default_font()
-    title_size = int(font_size * game.scale)
-    title_font = pygame.font.Font(font_name, title_size)
-    title = title_font.render(label, True, "white")
-    title_rect = title.get_rect()
-    title_rect.center = (game.width // 2, game.height // 5)
-    return title, title_rect
+    return create_text(label, font_size, game.width // 2, game.height // 5, game.scale)
 
 
 class MenuState(State):
