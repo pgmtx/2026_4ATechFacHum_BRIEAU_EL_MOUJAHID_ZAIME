@@ -1,3 +1,4 @@
+import random
 import sys
 
 import pygame
@@ -294,25 +295,46 @@ class CalibrationState(State):
         self.game.screen.blit(self.instructions, self.instructions_rect)
 
 
+directions = ("left", "up", "right", "down")
+rotations = (0, 90, 180, 270)
+
+
+def get_random_direction() -> str:
+    return random.choice(directions)
+
+
+def get_rotation_from_direction(direction: str) -> int:
+    index = directions.index(direction)
+    return rotations[index]
+
+
 class GameState(State):
     def __init__(self, game: Game) -> None:
         self.game = game
         self.title, self.title_rect = get_title(game, "JEU", 64)
         self.arrows_count = 6
+        self.arrow_directions = [
+            get_random_direction() for _ in range(self.arrows_count)
+        ]
+
+        margin = 20
+        spacing_const = 40
 
         self.arrow_size = int(96 * game.scale)
-        margin = 20
-        spacing_const = 40  # mettez la valeur d'écart fixe souhaitée en pixels
+        image = pygame.image.load("assets/arrow.png").convert_alpha()
+        image = pygame.transform.smoothscale(image, (self.arrow_size, self.arrow_size))
+
+        self.arrow_images = {
+            direction: pygame.transform.rotate(image, rotation)
+            for direction, rotation in zip(directions, rotations)
+        }
 
         total_arrows_width = self.arrow_size * self.arrows_count
         total_row_width = (
             total_arrows_width + max(0, (self.arrows_count - 1)) * spacing_const
         )
-
-        # centrer la rangée ; si la ligne est plus large que l'espace utilisable, start_x peut être < margin
         usable_width = game.width - 2 * margin
         start_x = margin + (usable_width - total_row_width) / 2
-
         self.square_y = (game.height - self.arrow_size) // 2
         self.square_x_positions = [
             int(start_x + i * (self.arrow_size + spacing_const))
@@ -325,9 +347,5 @@ class GameState(State):
     def draw(self):
         self.game.screen.blit(self.title, self.title_rect)
 
-        for x in self.square_x_positions:
-            pygame.draw.rect(
-                self.game.screen,
-                "white",
-                (x, self.square_y, self.arrow_size, self.arrow_size),
-            )
+        for x, direction in zip(self.square_x_positions, self.arrow_directions):
+            self.game.screen.blit(self.arrow_images[direction], (x, self.square_y))
