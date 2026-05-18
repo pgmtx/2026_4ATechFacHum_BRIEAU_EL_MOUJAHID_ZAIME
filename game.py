@@ -97,7 +97,12 @@ class Game:
         pygame.display.set_caption(self.game_title)
 
         self.clock = pygame.time.Clock()
-        self.states = {"menu": MenuState(self), "tutorial": TutorialState(self)}
+        self.states = {
+            "menu": MenuState(self),
+            "tutorial": TutorialState(self),
+            "calibration": CalibrationState(self),
+            "game": GameState(self),
+        }
         self.current_state = self.states["menu"]
 
     def run(self):
@@ -123,7 +128,7 @@ class State:
         return False
 
     def handle_events(self, events: list[pygame.event.Event]):
-        raise NotImplementedError("handle_event must be overridden")
+        pass
 
     def update(self):
         raise NotImplementedError("update must be overridden")
@@ -132,15 +137,22 @@ class State:
         raise NotImplementedError("draw must be overridden")
 
 
+def get_title(
+    game: Game, label: str, font_size: int
+) -> tuple[pygame.Surface, pygame.Rect]:
+    font_name = pygame.font.get_default_font()
+    title_size = int(font_size * game.scale)
+    title_font = pygame.font.Font(font_name, title_size)
+    title = title_font.render(label, True, "white")
+    title_rect = title.get_rect()
+    title_rect.center = (game.width // 2, game.height // 5)
+    return title, title_rect
+
+
 class MenuState(State):
     def __init__(self, game: Game):
         self.game = game
-        font_name = pygame.font.get_default_font()
-        title_size = int(72 * game.scale)
-        title_font = pygame.font.Font(font_name, title_size)
-        self.title = title_font.render(game.game_title.upper(), True, "white")
-        self.title_rect = self.title.get_rect()
-        self.title_rect.center = (game.width // 2, game.height // 5)
+        self.title, self.title_rect = get_title(game, game.game_title.upper(), 72)
 
         self.button_names = ("Jouer", "Tutoriel", "Quitter")
         self.button_width = int(255 * game.scale)
@@ -180,9 +192,8 @@ class MenuState(State):
             return
 
         if self.hovered_button == "Jouer":
-            print("Gonna play")
+            self.game.current_state = self.game.states["calibration"]
         elif self.hovered_button == "Tutoriel":
-            # print("Gonna show the tutorial")
             self.game.current_state = self.game.states["tutorial"]
         elif self.hovered_button == "Quitter":
             self.should_close = True
@@ -207,13 +218,7 @@ class MenuState(State):
 class TutorialState(State):
     def __init__(self, game: Game) -> None:
         self.game = game
-
-        font_name = pygame.font.get_default_font()
-        title_size = int(64 * game.scale)
-        title_font = pygame.font.Font(font_name, title_size)
-        self.title = title_font.render("SETUP", True, "white")
-        self.title_rect = self.title.get_rect()
-        self.title_rect.center = (game.width // 2, game.height // 5)
+        self.title, self.title_rect = get_title(game, "SETUP", 64)
 
     def handle_events(self, events: list[pygame.event.Event]):
         pass
@@ -222,6 +227,33 @@ class TutorialState(State):
         keys = pygame.key.get_pressed()
         if keys[pygame.K_ESCAPE]:
             self.game.current_state = self.game.states["menu"]
+
+    def draw(self):
+        self.game.screen.blit(self.title, self.title_rect)
+
+
+class CalibrationState(State):
+    def __init__(self, game: Game) -> None:
+        self.game = game
+        self.start = pygame.time.get_ticks()
+        self.calibration_duration = 20 * 1000  # ms
+        self.title, self.title_rect = get_title(game, "CALIBRATION", 64)
+
+    def update(self):
+        if pygame.time.get_ticks() - self.start > self.calibration_duration:
+            self.game.current_state = self.game.states["game"]
+
+    def draw(self):
+        self.game.screen.blit(self.title, self.title_rect)
+
+
+class GameState(State):
+    def __init__(self, game: Game) -> None:
+        self.game = game
+        self.title, self.title_rect = get_title(game, "GAME", 64)
+
+    def update(self):
+        pass
 
     def draw(self):
         self.game.screen.blit(self.title, self.title_rect)
