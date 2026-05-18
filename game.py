@@ -266,6 +266,11 @@ class CalibrationState(State):
         )
         self.rect = self.bg_rect.copy()
 
+        instructions_label = "Patientez 20 secondes, les capteurs se mettent en place."
+        self.instructions, self.instructions_rect = create_text(
+            instructions_label, 32, game.width // 2, game.height // 2, game.scale
+        )
+
     def update(self):
         if not self.inited:
             self.start = pygame.time.get_ticks()
@@ -282,12 +287,13 @@ class CalibrationState(State):
         )
         pygame.draw.rect(self.game.screen, "white", self.rect)
         self.game.screen.blit(self.title, self.title_rect)
+        self.game.screen.blit(self.instructions, self.instructions_rect)
 
 
 class GameState(State):
     def __init__(self, game: Game) -> None:
         self.game = game
-        self.title, self.title_rect = get_title(game, "GAME", 64)
+        self.title, self.title_rect = get_title(game, "JEU", 64)
 
     def update(self):
         pass
