@@ -345,6 +345,14 @@ class GameState(State):
             overlay.fill((0, 0, 0, 255))
             black.blit(overlay, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
             self.arrow_images_black[direction] = black
+
+        self.arrow_images_grey = {}
+        for direction, surf in self.arrow_images.items():
+            grey = surf.copy()
+            overlay = pygame.Surface(grey.get_size(), pygame.SRCALPHA)
+            overlay.fill((150, 150, 150, 255))
+            grey.blit(overlay, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+            self.arrow_images_grey[direction] = grey
         # grey variants for input feedback
         self.arrow_images_grey = {}
         for d, surf in self.arrow_images.items():
@@ -590,14 +598,7 @@ class PairArrowState(State):
         spacing = 24 * game.scale
         tile_size = int(128 * game.scale)
         self.tile_size = tile_size
-        self.tile_positions = []
-        total_width = pair_count * tile_size + max(0, pair_count - 1) * spacing
-        start_x = margin + (game.width - 2 * margin - total_width) / 2
-        y = (game.height - tile_size) // 2
-        for i in range(pair_count):
-            self.tile_positions.append(
-                (int(start_x + i * (tile_size + spacing)), int(y))
-            )
+        self.tile_positions = self._compute_tile_positions(margin, spacing)
 
         self.arrow_size = int(48 * game.scale)
         image = pygame.image.load("assets/arrow.png").convert_alpha()
@@ -615,17 +616,56 @@ class PairArrowState(State):
             black.blit(overlay, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
             self.arrow_images_black[direction] = black
 
+        self.arrow_images_grey = {}
+        for direction, surf in self.arrow_images.items():
+            grey = surf.copy()
+            overlay = pygame.Surface(grey.get_size(), pygame.SRCALPHA)
+            overlay.fill((150, 150, 150, 255))
+            grey.blit(overlay, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+            self.arrow_images_grey[direction] = grey
+
         self.show_pairs = True
         self.start = 0
         self.time_between_tiles = 800
         self.tiles_to_show = 0
         self.inited = False
+        self.waiting_round_transition = False
+        self.round_transition_start = 0
 
-        self.tile_index = 0
-        self.sub_index = 0
+        self.pressed_directions = 0
         self.chosen_direction = None
 
+    def _compute_tile_positions(
+        self, margin: int, spacing: float
+    ) -> list[tuple[int, int]]:
+        pair_count = len(self.pair_directions)
+        total_width = pair_count * self.tile_size + max(0, pair_count - 1) * spacing
+        start_x = margin + (self.game.width - 2 * margin - total_width) / 2
+        y = (self.game.height - self.tile_size) // 2
+        return [
+            (int(start_x + i * (self.tile_size + spacing)), int(y))
+            for i in range(pair_count)
+        ]
+
+    def _get_display_duration(self) -> int:
+        return self.time_between_tiles * (len(self.pair_directions) + 1)
+
+    def _start_next_round(self):
+        self.pair_directions.append((get_random_direction(), get_random_direction()))
+        self.tile_positions = self._compute_tile_positions(40, 24 * self.game.scale)
+        self.pressed_directions = 0
+        self.chosen_direction = None
+        self.show_pairs = True
+        self.start = 0
+        self.tiles_to_show = 0
+        self.inited = False
+        self.waiting_round_transition = False
+        self.round_transition_start = 0
+
     def handle_events(self, events: list[pygame.event.Event]):
+        if self.show_pairs or self.waiting_round_transition:
+            return
+
         for event in events:
             if event.type == pygame.KEYDOWN:
                 if event.key in direction_keys:
@@ -640,47 +680,58 @@ class PairArrowState(State):
 
         if self.show_pairs:
             end = pygame.time.get_ticks()
-            if end - self.start > len(self.pair_directions) * self.time_between_tiles:
+            if end - self.start > self._get_display_duration():
                 self.show_pairs = False
                 self.tiles_to_show = len(self.pair_directions)
             else:
                 self.tiles_to_show = min(
-                    (end - self.start) // self.time_between_tiles + 1,
+                    (end - self.start) // self.time_between_tiles,
                     len(self.pair_directions),
                 )
+            return
+
+        if self.waiting_round_transition:
+            now = pygame.time.get_ticks()
+            if now - self.round_transition_start >= 500:
+                self._start_next_round()
             return
 
         if self.chosen_direction is None:
             return
 
-        left, right = self.pair_directions[self.tile_index]
-        expected = left if self.sub_index == 0 else right
+        expected_index = self.pressed_directions
+        pair_index = expected_index // 2
+        sub_index = expected_index % 2
+        left, right = self.pair_directions[pair_index]
+        expected = left if sub_index == 0 else right
         if self.chosen_direction != expected:
             self.game.current_state = SummaryState(self.game)
             return
 
-        self.sub_index += 1
+        self.pressed_directions += 1
         self.chosen_direction = None
-        if self.sub_index >= 2:
-            self.sub_index = 0
-            self.tile_index += 1
-            if self.tile_index >= len(self.pair_directions):
-                self.pair_directions.append(
-                    (get_random_direction(), get_random_direction())
-                )
-                self.__init__(self.game, initial_count=len(self.pair_directions) * 2)
+        if self.pressed_directions < len(self.pair_directions) * 2:
+            return
+
+        self.waiting_round_transition = True
+        self.round_transition_start = pygame.time.get_ticks()
 
     def draw(self):
         self.game.screen.blit(self.title, self.title_rect)
 
-        if not self.show_pairs:
-            return
+        positions = self._compute_tile_positions(40, 24 * self.game.scale)
+        if self.show_pairs:
+            self.draw_display_phase(positions)
+        else:
+            self.draw_input_phase(positions)
 
-        for i, ((x, y), (left, right)) in enumerate(
-            zip(self.tile_positions, self.pair_directions)
+    def draw_display_phase(self, positions):
+        it = zip(positions, self.pair_directions)
+        for idx, (x_y, direction_pair) in enumerate(
+            itertools.islice(it, self.tiles_to_show)
         ):
-            if i >= self.tiles_to_show and self.show_pairs:
-                break
+            (x, y) = x_y
+            left, right = direction_pair
             tile_rect = pygame.Rect(x, y, self.tile_size, self.tile_size)
             pygame.draw.rect(self.game.screen, "#ffffff10", tile_rect, border_radius=8)
             lx = x + self.tile_size // 4 - self.arrow_size // 2
@@ -693,6 +744,44 @@ class PairArrowState(State):
                 self.arrow_images_black[right],
                 (rx, y + (self.tile_size - self.arrow_size) // 2),
             )
+
+    def draw_input_phase(self, positions):
+        full_tiles = self.pressed_directions // 2
+        partial_arrow_visible = self.pressed_directions % 2 == 1
+
+        for i, ((x, y), (left, right)) in enumerate(
+            zip(positions, self.pair_directions)
+        ):
+            if i < full_tiles:
+                tile_rect = pygame.Rect(x, y, self.tile_size, self.tile_size)
+                pygame.draw.rect(
+                    self.game.screen, "#ffffff10", tile_rect, border_radius=8
+                )
+
+                lx = x + self.tile_size // 4 - self.arrow_size // 2
+                rx = x + 3 * self.tile_size // 4 - self.arrow_size // 2
+                self.game.screen.blit(
+                    self.arrow_images_grey[left],
+                    (lx, y + (self.tile_size - self.arrow_size) // 2),
+                )
+                self.game.screen.blit(
+                    self.arrow_images_grey[right],
+                    (rx, y + (self.tile_size - self.arrow_size) // 2),
+                )
+                continue
+
+            if i == full_tiles and partial_arrow_visible:
+                tile_rect = pygame.Rect(x, y, self.tile_size, self.tile_size)
+                pygame.draw.rect(
+                    self.game.screen, "#ffffff10", tile_rect, border_radius=8
+                )
+
+                lx = x + self.tile_size // 4 - self.arrow_size // 2
+                self.game.screen.blit(
+                    self.arrow_images_grey[left],
+                    (lx, y + (self.tile_size - self.arrow_size) // 2),
+                )
+            break
 
 
 class SummaryState(State):
