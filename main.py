@@ -32,20 +32,8 @@ if sys.platform == "darwin":
             print(f"Python version required is ≥ 3.10. Installed is {python_version}")
             exit(1)
 
-
-# sys.path.append(f"PLUX-API-Python3/{osDic[platform.system()]}")
-
-# plt.ion()
-# fig, ax = plt.subplots()
-
-# x = []
-# y = []
-# (line,) = ax.plot(x, y, color="tab:blue")
-
-
-try:
-    _ = plux.SignalsDev
-except AttributeError:
+plux_library_found = hasattr(plux, "SignalsDev")
+if not plux_library_found:
     # Downloading the lib file directly is possible but wouldn't respect the principle of least astonishment.
     print(
         f"error: plux lib file is missing, make sure to download it at https://github.com/pluxbiosignals/python-samples/tree/master/PLUX-API-Python3/{osDic[platform.system()]}"
@@ -57,17 +45,22 @@ class NewDevice(plux.SignalsDev):
     def __init__(self, address: str):
         plux.SignalsDev.__init__(address)
 
+        plt.ion()
+        _, self.ax = plt.subplots()
+        self.x = []
+        self.y = []
+        (self.line,) = self.ax.plot(self.x, self.y, color="tab:blue")
+
     def onRawFrame(self, nSeq, data):
         if nSeq % (self.frequency // 10) == 0:
             # print(f"{nSeq:03} :", *data)
-            x.append(len(x) + 1)
-            y.append(data[0])
+            self.x.append(len(self.x) + 1)
+            self.y.append(data[0])
             print(nSeq, data[0])
 
-            # plt.plot(x, y)
-            line.set_data(x, y)
-            ax.relim()
-            ax.autoscale_view()
+            self.line.set_data(self.x, self.y)
+            self.ax.relim()
+            self.ax.autoscale_view()
             plt.pause(0.01)
 
         return nSeq > self.duration * self.frequency
