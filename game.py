@@ -1,3 +1,4 @@
+import itertools
 import random
 import sys
 
@@ -127,7 +128,7 @@ class Game:
             "calibration": CalibrationState(self),
             "game": GameState(self),
         }
-        self.current_state = self.states["menu"]
+        self.current_state = self.states["game"]
 
     def run(self):
         is_running = True
@@ -341,11 +342,33 @@ class GameState(State):
             for i in range(self.arrows_count)
         ]
 
+        self.start = 0
+        self.time_between_arrows = 500  # ms
+        self.total_display_duration = self.time_between_arrows * (self.arrows_count + 2)
+        self.show_arrows = True
+        self.arrows_to_show = 0
+        self.inited = False
+
     def update(self):
-        pass
+        if not self.inited:
+            self.start = pygame.time.get_ticks()
+            self.inited = True
+
+        if self.show_arrows:
+            end = pygame.time.get_ticks()
+            if end - self.start > self.total_display_duration:
+                self.show_arrows = False
+            elif end - self.start > self.time_between_arrows:
+                i = min(
+                    (end - self.start) // self.time_between_arrows, self.arrows_count
+                )
+                if self.arrows_to_show != i:
+                    self.arrows_to_show = i
+                    print(self.arrows_to_show)
 
     def draw(self):
         self.game.screen.blit(self.title, self.title_rect)
 
-        for x, direction in zip(self.square_x_positions, self.arrow_directions):
+        it = zip(self.square_x_positions, self.arrow_directions)
+        for x, direction in itertools.islice(it, self.arrows_to_show):
             self.game.screen.blit(self.arrow_images[direction], (x, self.square_y))
