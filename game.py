@@ -122,14 +122,14 @@ class Game:
         pygame.display.set_caption(self.game_title)
 
         self.clock = pygame.time.Clock()
-        self.states = {
+        self.states: dict[str, State] = {
             "menu": MenuState(self),
             "tutorial": TutorialState(self),
             "calibration": CalibrationState(self),
             "game": GameState(self),
             "lost": LostState(self),
         }
-        self.current_state = self.states["game"]
+        self.current_state: State = self.states["game"]
 
     def run(self):
         is_running = True
@@ -358,12 +358,17 @@ class GameState(State):
 
         self.start = 0
         self.time_between_arrows = 500  # ms
-        self.total_display_duration = self.time_between_arrows * (self.arrows_count + 2)
+        self.total_display_duration = self._get_display_duration()
         self.show_arrows = True
         self.arrows_to_show = 0
         self.inited = False
         self.chosen_direction = None
         self.pressed_directions = 0
+        self.waiting_round_transition = False
+        self.round_transition_start = 0
+
+    def _get_display_duration(self) -> int:
+        return self.time_between_arrows * (self.arrows_count + 1)
 
     def _compute_square_x_positions(self) -> list[int]:
         margin = 20
@@ -400,8 +405,23 @@ class GameState(State):
 
         if self.show_arrows:
             self.display_arrows_progressively()
+        elif self.waiting_round_transition:
+            now = pygame.time.get_ticks()
+            if now - self.round_transition_start >= self.time_between_arrows:
+                self._start_next_round()
         else:
             self.handle_player_inputs()
+
+    def _start_next_round(self):
+        self.pressed_directions = 0
+        self.arrows_count += 1
+        self.arrow_directions.append(get_random_direction())
+        self.inited = False
+        self.chosen_direction = None
+        self.show_arrows = True
+        self.arrows_to_show = 0
+        self.waiting_round_transition = False
+        self.total_display_duration = self._get_display_duration()
 
     def display_arrows_progressively(self):
         end = pygame.time.get_ticks()
@@ -446,15 +466,10 @@ class GameState(State):
         if self.pressed_directions != len(self.arrow_directions):
             return
 
-        self.pressed_directions = 0
-        self.arrows_count += 1
-        self.arrow_directions.append(get_random_direction())
-        # no persistent position list; compute positions on draw to avoid
-        # synchronization issues
-        self.inited = False
-        self.chosen_direction = None
-        self.show_arrows = True
-        self.total_display_duration = self.time_between_arrows * (self.arrows_count + 2)
+        # Keep the full sequence in grey for a short delay before displaying
+        # the next round so the last validated input is visible.
+        self.waiting_round_transition = True
+        self.round_transition_start = pygame.time.get_ticks()
 
     def draw(self):
         self.game.screen.blit(self.title, self.title_rect)
