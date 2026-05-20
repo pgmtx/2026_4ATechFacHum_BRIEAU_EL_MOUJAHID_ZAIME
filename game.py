@@ -319,6 +319,40 @@ def key_to_direction(key: int) -> str:
     return directions[index]
 
 
+def _make_arrow_images(size: int) -> tuple[dict, dict, dict]:
+    image = pygame.image.load("assets/arrow.png").convert_alpha()
+    image = pygame.transform.smoothscale(image, (size, size))
+    arrow_images = {
+        direction: pygame.transform.rotate(image, rotation)
+        for direction, rotation in zip(directions, rotations)
+    }
+
+    arrow_images_black = {}
+    arrow_images_grey = {}
+    for direction, surf in arrow_images.items():
+        black = surf.copy()
+        overlay_b = pygame.Surface(black.get_size(), pygame.SRCALPHA)
+        overlay_b.fill((0, 0, 0, 255))
+        black.blit(overlay_b, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        arrow_images_black[direction] = black
+
+        grey = surf.copy()
+        overlay_g = pygame.Surface(grey.get_size(), pygame.SRCALPHA)
+        overlay_g.fill((150, 150, 150, 255))
+        grey.blit(overlay_g, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        arrow_images_grey[direction] = grey
+
+    return arrow_images, arrow_images_black, arrow_images_grey
+
+
+def _compute_centered_x_positions(
+    game_width: int, tile_size: int, count: int, margin: int, spacing: float
+) -> list[int]:
+    total_width = count * tile_size + max(0, count - 1) * spacing
+    start_x = margin + (game_width - 2 * margin - total_width) / 2
+    return [int(start_x + i * (tile_size + spacing)) for i in range(count)]
+
+
 class GameState(State):
     def __init__(self, game: Game) -> None:
         self.game = game
@@ -330,49 +364,14 @@ class GameState(State):
         spacing_const = 40
 
         self.arrow_size = int(96 * game.scale)
-        image = pygame.image.load("assets/arrow.png").convert_alpha()
-        image = pygame.transform.smoothscale(image, (self.arrow_size, self.arrow_size))
-
-        self.arrow_images = {
-            direction: pygame.transform.rotate(image, rotation)
-            for direction, rotation in zip(directions, rotations)
-        }
-
-        self.arrow_images_black = {}
-        for direction, surf in self.arrow_images.items():
-            black = surf.copy()
-            overlay = pygame.Surface(black.get_size(), pygame.SRCALPHA)
-            overlay.fill((0, 0, 0, 255))
-            black.blit(overlay, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
-            self.arrow_images_black[direction] = black
-
-        self.arrow_images_grey = {}
-        for direction, surf in self.arrow_images.items():
-            grey = surf.copy()
-            overlay = pygame.Surface(grey.get_size(), pygame.SRCALPHA)
-            overlay.fill((150, 150, 150, 255))
-            grey.blit(overlay, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
-            self.arrow_images_grey[direction] = grey
-        # grey variants for input feedback
-        self.arrow_images_grey = {}
-        for d, surf in self.arrow_images.items():
-            grey = surf.copy()
-            overlay = pygame.Surface(grey.get_size(), pygame.SRCALPHA)
-            overlay.fill((150, 150, 150, 255))
-            grey.blit(overlay, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
-            self.arrow_images_grey[d] = grey
-
-        total_arrows_width = self.arrow_size * self.arrows_count
-        total_row_width = (
-            total_arrows_width + max(0, (self.arrows_count - 1)) * spacing_const
+        self.arrow_images, self.arrow_images_black, self.arrow_images_grey = (
+            _make_arrow_images(self.arrow_size)
         )
-        usable_width = game.width - 2 * margin
-        start_x = margin + (usable_width - total_row_width) / 2
+
         self.square_y = (game.height - self.arrow_size) // 2
-        self.square_x_positions = [
-            int(start_x + i * (self.arrow_size + spacing_const))
-            for i in range(self.arrows_count)
-        ]
+        self.square_x_positions = _compute_centered_x_positions(
+            game.width, self.arrow_size, self.arrows_count, margin, spacing_const
+        )
 
         self.start = 0
         self.time_between_arrows = 500  # ms
@@ -391,16 +390,9 @@ class GameState(State):
     def _compute_square_x_positions(self) -> list[int]:
         margin = 20
         spacing_const = 40
-        total_arrows_width = self.arrow_size * self.arrows_count
-        total_row_width = (
-            total_arrows_width + max(0, (self.arrows_count - 1)) * spacing_const
+        return _compute_centered_x_positions(
+            self.game.width, self.arrow_size, self.arrows_count, margin, spacing_const
         )
-        usable_width = self.game.width - 2 * margin
-        start_x = margin + (usable_width - total_row_width) / 2
-        return [
-            int(start_x + i * (self.arrow_size + spacing_const))
-            for i in range(self.arrows_count)
-        ]
 
     def handle_events(self, events: list[pygame.event.Event]):
         if self.show_arrows or self.waiting_round_transition:
@@ -598,31 +590,16 @@ class PairArrowState(State):
         spacing = 24 * game.scale
         tile_size = int(128 * game.scale)
         self.tile_size = tile_size
-        self.tile_positions = self._compute_tile_positions(margin, spacing)
+        y = (game.height - tile_size) // 2
+        xs = _compute_centered_x_positions(
+            game.width, tile_size, pair_count, margin, spacing
+        )
+        self.tile_positions = [(x, y) for x in xs]
 
         self.arrow_size = int(48 * game.scale)
-        image = pygame.image.load("assets/arrow.png").convert_alpha()
-        image = pygame.transform.smoothscale(image, (self.arrow_size, self.arrow_size))
-        self.arrow_images = {
-            direction: pygame.transform.rotate(image, rotation)
-            for direction, rotation in zip(directions, rotations)
-        }
-
-        self.arrow_images_black = {}
-        for direction, surf in self.arrow_images.items():
-            black = surf.copy()
-            overlay = pygame.Surface(black.get_size(), pygame.SRCALPHA)
-            overlay.fill((0, 0, 0, 255))
-            black.blit(overlay, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
-            self.arrow_images_black[direction] = black
-
-        self.arrow_images_grey = {}
-        for direction, surf in self.arrow_images.items():
-            grey = surf.copy()
-            overlay = pygame.Surface(grey.get_size(), pygame.SRCALPHA)
-            overlay.fill((150, 150, 150, 255))
-            grey.blit(overlay, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
-            self.arrow_images_grey[direction] = grey
+        self.arrow_images, self.arrow_images_black, self.arrow_images_grey = (
+            _make_arrow_images(self.arrow_size)
+        )
 
         self.show_pairs = True
         self.start = 0
@@ -635,24 +612,22 @@ class PairArrowState(State):
         self.pressed_directions = 0
         self.chosen_direction = None
 
-    def _compute_tile_positions(
-        self, margin: int, spacing: float
-    ) -> list[tuple[int, int]]:
-        pair_count = len(self.pair_directions)
-        total_width = pair_count * self.tile_size + max(0, pair_count - 1) * spacing
-        start_x = margin + (self.game.width - 2 * margin - total_width) / 2
-        y = (self.game.height - self.tile_size) // 2
-        return [
-            (int(start_x + i * (self.tile_size + spacing)), int(y))
-            for i in range(pair_count)
-        ]
+    # positions are computed using the shared helper _compute_centered_x_positions
 
     def _get_display_duration(self) -> int:
         return self.time_between_tiles * (len(self.pair_directions) + 1)
 
     def _start_next_round(self):
         self.pair_directions.append((get_random_direction(), get_random_direction()))
-        self.tile_positions = self._compute_tile_positions(40, 24 * self.game.scale)
+        y = (self.game.height - self.tile_size) // 2
+        xs = _compute_centered_x_positions(
+            self.game.width,
+            self.tile_size,
+            len(self.pair_directions),
+            40,
+            24 * self.game.scale,
+        )
+        self.tile_positions = [(x, y) for x in xs]
         self.pressed_directions = 0
         self.chosen_direction = None
         self.show_pairs = True
@@ -719,7 +694,15 @@ class PairArrowState(State):
     def draw(self):
         self.game.screen.blit(self.title, self.title_rect)
 
-        positions = self._compute_tile_positions(40, 24 * self.game.scale)
+        y = (self.game.height - self.tile_size) // 2
+        xs = _compute_centered_x_positions(
+            self.game.width,
+            self.tile_size,
+            len(self.pair_directions),
+            40,
+            24 * self.game.scale,
+        )
+        positions = [(x, y) for x in xs]
         if self.show_pairs:
             self.draw_display_phase(positions)
         else:
