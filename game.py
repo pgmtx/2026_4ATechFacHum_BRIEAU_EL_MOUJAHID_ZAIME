@@ -337,6 +337,14 @@ class GameState(State):
             direction: pygame.transform.rotate(image, rotation)
             for direction, rotation in zip(directions, rotations)
         }
+
+        self.arrow_images_black = {}
+        for direction, surf in self.arrow_images.items():
+            black = surf.copy()
+            overlay = pygame.Surface(black.get_size(), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 255))
+            black.blit(overlay, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+            self.arrow_images_black[direction] = black
         # grey variants for input feedback
         self.arrow_images_grey = {}
         for d, surf in self.arrow_images.items():
@@ -599,9 +607,17 @@ class PairArrowState(State):
             for direction, rotation in zip(directions, rotations)
         }
 
+        self.arrow_images_black = {}
+        for direction, surf in self.arrow_images.items():
+            black = surf.copy()
+            overlay = pygame.Surface(black.get_size(), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 255))
+            black.blit(overlay, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+            self.arrow_images_black[direction] = black
+
         self.show_pairs = True
         self.start = 0
-        self.time_between_tiles = 700
+        self.time_between_tiles = 800
         self.tiles_to_show = 0
         self.inited = False
 
@@ -656,6 +672,10 @@ class PairArrowState(State):
 
     def draw(self):
         self.game.screen.blit(self.title, self.title_rect)
+
+        if not self.show_pairs:
+            return
+
         for i, ((x, y), (left, right)) in enumerate(
             zip(self.tile_positions, self.pair_directions)
         ):
@@ -666,11 +686,11 @@ class PairArrowState(State):
             lx = x + self.tile_size // 4 - self.arrow_size // 2
             rx = x + 3 * self.tile_size // 4 - self.arrow_size // 2
             self.game.screen.blit(
-                self.arrow_images[left],
+                self.arrow_images_black[left],
                 (lx, y + (self.tile_size - self.arrow_size) // 2),
             )
             self.game.screen.blit(
-                self.arrow_images[right],
+                self.arrow_images_black[right],
                 (rx, y + (self.tile_size - self.arrow_size) // 2),
             )
 
