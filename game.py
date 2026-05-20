@@ -127,6 +127,7 @@ class Game:
             "tutorial": TutorialState(self),
             "calibration": CalibrationState(self),
             "game": GameState(self),
+            "lost": LostState(self),
         }
         self.current_state = self.states["game"]
 
@@ -298,10 +299,8 @@ class CalibrationState(State):
 
 directions = ("left", "up", "right", "down")
 direction_keys = (pygame.K_LEFT, pygame.K_UP, pygame.K_RIGHT, pygame.K_DOWN)
-# Adjusted rotations so that visual orientation matches logical direction for
-# the project's arrow sprite (which appears to render rotated in the opposite
-# direction): left=0, up=270, right=180, down=90
-rotations = (0, 270, 180, 90)
+# Right rotation is negative
+rotations = (0, -90, 180, 90)
 
 
 def get_random_direction() -> str:
@@ -314,12 +313,7 @@ def get_rotation_from_direction(direction: str) -> int:
 
 
 def key_to_direction(key: int) -> str:
-    KEY_TO_DIRECTION = {
-        pygame.K_LEFT: "left",
-        pygame.K_UP: "up",
-        pygame.K_RIGHT: "right",
-        pygame.K_DOWN: "down",
-    }
+    KEY_TO_DIRECTION = dict(zip(direction_keys, directions))
     return KEY_TO_DIRECTION.get(key, "")
 
 
@@ -387,16 +381,17 @@ class GameState(State):
 
     def handle_events(self, events: list[pygame.event.Event]):
         for event in events:
-            if event.type == pygame.KEYDOWN:
-                if event.key in direction_keys:
-                    mapped = key_to_direction(event.key)
-                    # Diagnostic log: key code, key name, mapped direction
-                    print(
-                        f"key event: {event.key} -> {pygame.key.name(event.key)} mapped to {mapped}"
-                    )
-                    self.chosen_direction = mapped
-                else:
-                    self.chosen_direction = None
+            if event.type != pygame.KEYDOWN:
+                return
+            if event.key not in direction_keys:
+                self.chosen_direction = None
+                return
+
+            mapped = key_to_direction(event.key)
+            print(
+                f"key event: {event.key} -> {pygame.key.name(event.key)} mapped to {mapped}"
+            )
+            self.chosen_direction = mapped
 
     def update(self):
         if not self.inited:
@@ -411,7 +406,6 @@ class GameState(State):
     def display_arrows_progressively(self):
         end = pygame.time.get_ticks()
         elapsed = end - self.start
-        # Diagnostic
         print(
             f"display_progress: elapsed={elapsed} total_display_duration={self.total_display_duration} arrows_count={self.arrows_count} arrows_to_show={self.arrows_to_show}"
         )
@@ -439,9 +433,7 @@ class GameState(State):
                     self.game, initial_count=len(self.arrow_directions)
                 )
             else:
-                self.game.current_state = LostState(
-                    self.game, title="PERDU", show_retry_button=True
-                )
+                self.game.current_state = self.game.states["lost"]
             return
 
         self.pressed_directions += 1
@@ -469,57 +461,50 @@ class GameState(State):
 
         positions = self._compute_square_x_positions()
         if self.show_arrows:
-            # Diagnostic: show lengths and requested count
-            print(
-                f"draw display: arrows_to_show={self.arrows_to_show} positions={len(positions)} dirs={len(self.arrow_directions)}"
-            )
-            it = zip(positions, self.arrow_directions)
-            for idx, (x, direction) in enumerate(
-                itertools.islice(it, self.arrows_to_show)
-            ):
-                print(
-                    f"draw display: blitting idx={idx} direction={direction} at x={x}"
-                )
-                self.game.screen.blit(self.arrow_images[direction], (x, self.square_y))
-            return
+            self.draw_display_phase(positions)
+        else:
+            self.draw_input_phase(positions)
 
-        # Input phase: show only already-correct arrows in grey
+    def draw_display_phase(self, positions):
+        print(
+            f"draw display: arrows_to_show={self.arrows_to_show} positions={len(positions)} dirs={len(self.arrow_directions)}"
+        )
+        it = zip(positions, self.arrow_directions)
+        for idx, (x, direction) in enumerate(itertools.islice(it, self.arrows_to_show)):
+            print(f"draw display: blitting idx={idx} direction={direction} at x={x}")
+            self.game.screen.blit(self.arrow_images[direction], (x, self.square_y))
+
+    def draw_input_phase(self, positions):
         print(
             f"draw input: pressed={self.pressed_directions} positions={len(positions)} dirs={len(self.arrow_directions)}"
         )
         for i, (x, direction) in enumerate(zip(positions, self.arrow_directions)):
-            if i < self.pressed_directions:
-                img = self.arrow_images.get(direction) or self.arrow_images_grey.get(
-                    direction
-                )
-                img = self.arrow_images_grey.get(direction, img)
-                print(
-                    f"draw input: blitting grey idx={i} direction={direction} at x={x}"
-                )
-                self.game.screen.blit(img, (x, self.square_y))
+            if i >= self.pressed_directions:
+                break
+            img = self.arrow_images.get(direction) or self.arrow_images_grey.get(
+                direction
+            )
+            img = self.arrow_images_grey.get(direction, img)
+            print(f"draw input: blitting grey idx={i} direction={direction} at x={x}")
+            self.game.screen.blit(img, (x, self.square_y))
 
 
 class LostState(State):
-    def __init__(
-        self, game: Game, title: str = "PERDU", show_retry_button: bool = False
-    ) -> None:
+    def __init__(self, game: Game) -> None:
         self.game = game
-        self.title_text = title
-        self.show_retry = show_retry_button
-        self.title, self.title_rect = get_title(game, self.title_text, 72)
-        if self.show_retry:
-            self.instructions, self.instructions_rect = create_text(
-                "Appuyer sur ESPACE pour rejouer, ECHAP pour menu",
-                28,
-                game.width // 2,
-                game.height // 2,
-                game.scale,
-            )
+        self.title, self.title_rect = get_title(game, "PERDU", 72)
+        self.instructions, self.instructions_rect = create_text(
+            "Appuyer sur ESPACE pour rejouer, ECHAP pour menu",
+            28,
+            game.width // 2,
+            game.height // 2,
+            game.scale,
+        )
 
     def handle_events(self, events: list[pygame.event.Event]):
         for event in events:
             if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_SPACE and self.show_retry:
+                if event.key == pygame.K_SPACE:
                     self.game.current_state = GameState(self.game)
                 elif event.key == pygame.K_ESCAPE:
                     self.game.current_state = self.game.states["menu"]
@@ -529,8 +514,7 @@ class LostState(State):
 
     def draw(self):
         self.game.screen.blit(self.title, self.title_rect)
-        if self.show_retry:
-            self.game.screen.blit(self.instructions, self.instructions_rect)
+        self.game.screen.blit(self.instructions, self.instructions_rect)
 
 
 class PairArrowState(State):
