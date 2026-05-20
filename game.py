@@ -128,8 +128,10 @@ class Game:
             "calibration": CalibrationState(self),
             "game": GameState(self),
             "lost": LostState(self),
+            "pre_pair": PrePairState(self),
+            "pair": PairArrowState(self),
         }
-        self.current_state: State = self.states["game"]
+        self.current_state: State = self.states["pre_pair"]
 
     def run(self):
         is_running = True
@@ -451,11 +453,8 @@ class GameState(State):
             print(
                 f"MISMATCH: chosen={self.chosen_direction} expected={expected} index={self.pressed_directions} seq={self.arrow_directions}"
             )
-            # Transition to lost or pair state depending on difficulty
             if len(self.arrow_directions) >= 7:
-                self.game.current_state = PairArrowState(
-                    self.game, initial_count=len(self.arrow_directions)
-                )
+                self.game.current_state = self.game.states["pre_pair"]
             else:
                 self.game.current_state = self.game.states["lost"]
             return
@@ -536,8 +535,41 @@ class LostState(State):
         self.game.screen.blit(self.instructions, self.instructions_rect)
 
 
+class PrePairState(State):
+    def __init__(self, game: Game) -> None:
+        self.game = game
+        self.title, self.title_rect = get_title(game, "TRANSITION", 64)
+        self.text, self.text_rect = create_text(
+            "On passe aux séquences de paires. Restez concentrés.",
+            28,
+            game.width // 2,
+            game.height // 2,
+            game.scale,
+        )
+        self.subtext, self.subtext_rect = create_text(
+            "Appuyez sur [espace] pour continuer",
+            20,
+            game.width // 2,
+            game.height * 3 // 4,
+            game.scale,
+        )
+
+    def handle_events(self, events: list[pygame.event.Event]):
+        for event in events:
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+                self.game.current_state = self.game.states["pair"]
+
+    def update(self):
+        pass
+
+    def draw(self):
+        self.game.screen.blit(self.title, self.title_rect)
+        self.game.screen.blit(self.text, self.text_rect)
+        self.game.screen.blit(self.subtext, self.subtext_rect)
+
+
 class PairArrowState(State):
-    def __init__(self, game: Game, initial_count: int = 2) -> None:
+    def __init__(self, game: Game, initial_count: int = 1) -> None:
         self.game = game
         self.title, self.title_rect = get_title(game, "PAIR MODE", 64)
 
