@@ -131,7 +131,7 @@ class Game:
             "pre_pair": PrePairState(self),
             "pair": PairArrowState(self),
         }
-        self.current_state: State = self.states["pre_pair"]
+        self.current_state: State = self.states["menu"]
 
     def run(self):
         is_running = True
@@ -548,7 +548,7 @@ class PrePairState(State):
         self.game = game
         self.title, self.title_rect = get_title(game, "TRANSITION", 64)
         self.text, self.text_rect = create_text(
-            "On passe aux séquences de paires. Restez concentrés.",
+            "On passe aux séquences de paires. Restez concentré.",
             28,
             game.width // 2,
             game.height // 2,
