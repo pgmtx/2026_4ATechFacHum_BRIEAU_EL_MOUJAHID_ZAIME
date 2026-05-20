@@ -313,8 +313,8 @@ def get_rotation_from_direction(direction: str) -> int:
 
 
 def key_to_direction(key: int) -> str:
-    KEY_TO_DIRECTION = dict(zip(direction_keys, directions))
-    return KEY_TO_DIRECTION.get(key, "")
+    index = direction_keys.index(key)
+    return directions[index]
 
 
 class GameState(State):
@@ -385,6 +385,9 @@ class GameState(State):
         ]
 
     def handle_events(self, events: list[pygame.event.Event]):
+        if self.show_arrows or self.waiting_round_transition:
+            return
+
         for event in events:
             if event.type != pygame.KEYDOWN:
                 return
@@ -433,6 +436,7 @@ class GameState(State):
             print("display_progress: switching to input phase")
             self.show_arrows = False
             self.arrows_to_show = 0
+            self.chosen_direction = None
         elif elapsed > self.time_between_arrows:
             i = min(elapsed // self.time_between_arrows, self.arrows_count)
             if self.arrows_to_show != i:
