@@ -126,7 +126,7 @@ class Game:
             "menu": MenuState(self),
             "tutorial": TutorialState(self),
             "calibration": CalibrationState(self),
-            "game": GameState(self),
+            "game": SingleArrowState(self),
             "lost": LostState(self),
             "pre_pair": PrePairState(self),
             "pair": PairArrowState(self),
@@ -353,7 +353,7 @@ def _compute_centered_x_positions(
     return [int(start_x + i * (tile_size + spacing)) for i in range(count)]
 
 
-class GameState(State):
+class SingleArrowState(State):
     def __init__(self, game: Game) -> None:
         self.game = game
         self.title, self.title_rect = get_title(game, "JEU", 64)
@@ -531,7 +531,7 @@ class LostState(State):
         for event in events:
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_SPACE:
-                    self.game.current_state = GameState(self.game)
+                    self.game.current_state = SingleArrowState(self.game)
                 elif event.key == pygame.K_ESCAPE:
                     self.game.current_state = self.game.states["menu"]
 
