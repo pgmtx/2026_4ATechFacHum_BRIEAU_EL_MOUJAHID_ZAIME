@@ -624,7 +624,6 @@ class CalibrationPhase:
 
         print("[Calibration] Terminee -- baseline RT calculee sur les 5 premieres reponses du jeu")
 
-
 # ==============================================================
 # TEST STANDALONE -- python signal_processing.py
 # ==============================================================
@@ -668,6 +667,7 @@ if __name__ == "__main__":
     # (equivalent a la CalibrationPhase en situation reelle)
     # On alimente d abord 10s de donnees, on recupere les valeurs, puis on calibre
     print("Phase de calibration synthetique (10s)...")
+    ts_now = time.time()
     calib_samples = int(10 * config.SAMPLING_RATE)
     for i in range(calib_samples):
         ts_c = ts_now + t_arr[i]
