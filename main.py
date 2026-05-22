@@ -17,22 +17,19 @@ import time
 
 def main():
     os.makedirs("sessions", exist_ok=True)
-
-    # Nettoyer les anciens événements
-    events_file = "sessions/live_events.json"
     try:
-        with open(events_file, "w") as f:
+        with open("sessions/live_events.json", "w") as f:
             import json
-            json.dump({"levels": [], "keys": [], "session_start": time.time()}, f)
+            json.dump({"levels_normal":[], "levels_chunking":[],
+                       "keys_normal":[], "keys_chunking":[]}, f)
     except Exception:
         pass
 
-    print("[main] Démarrage ChunkyMemo...")
-    print("[main] Fenêtre JEU  → gauche")
-    print("[main] Fenêtre GRAPHES → droite/bas")
+    print("[main] Démarrage ChunkyMemo")
+    print("[main] Phase 1 : Normal  →  Phase 2 : Chunking")
+    print("[main] Fenêtre JEU  → gauche  |  Fenêtre GRAPHES → bas-gauche")
     print()
 
-    # Lancer les deux processus en parallèle
     game_proc   = subprocess.Popen([sys.executable, "game_only.py"])
     physio_proc = subprocess.Popen([sys.executable, "physio_live.py"])
 

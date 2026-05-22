@@ -209,6 +209,8 @@ def main():
         if _game_ended[0] and _close_at[0] and time.time() >= _close_at[0]:
             if not _closing[0]:
                 _closing[0] = True
+                # Enrichir les niveaux MAINTENANT (avant que analysis.py tourne)
+                _enrich_levels(all_ts, fc_ts, fc_v, rr_ts, rr_v, ppg)
                 try:
                     with open(EVENTS_FILE) as _f:
                         _ev = json.load(_f)
@@ -393,6 +395,75 @@ def main():
     acq.stop()
     print(f"\nSession : {len(all_ppg)} échantillons  FC={ppg.fc_bpm}  RR={pzt.rr_rpm}")
 
+    # Sauvegarder les données complètes de la session pour analysis.py
+    try:
+        with open(EVENTS_FILE) as f:
+            ev = json.load(f)
+        mode = ev.get("mode", "normal").lower()
+        # Construire le dict de session compatible avec analysis.py
+        session_data = {
+            "mode":        mode,
+            "levels":      ev.get("levels", []),
+            "raw_pzt":     all_pzt,
+            "timestamps":  all_ts,
+            "level_events":[(lv["ts"], lv["level"]) for lv in ev.get("levels", [])],
+        }
+        # Ajouter les métriques physiologiques par niveau
+        snap_fc  = ppg.fc_bpm
+        snap_rr  = pzt.rr_rpm
+        snap_pwa = ppg.pwa_raw
+        for lv in session_data["levels"]:
+            if "hr_bpm" not in lv:
+                lv["hr_bpm"]       = snap_fc
+                lv["rr_rpm"]       = snap_rr
+                lv["ppg_amplitude"]= snap_pwa
+                lv["success"]      = True  # on ne sait pas ici, game_only le sait
+
+        fname_session = f"sessions/session_{mode}_{time.strftime('%Y%m%d_%H%M%S')}.json"
+        os.makedirs("sessions", exist_ok=True)
+        with open(fname_session, "w") as f:
+            json.dump(session_data, f)
+        print(f"[session] Sauvegardée : {fname_session}")
+        print("[session] Lancez 'python analysis.py' pour la comparaison Normal vs Chunking")
+    except Exception as e:
+        print(f"[session] Erreur sauvegarde : {e}")
+
+
+def _enrich_levels(all_ts, fc_ts, fc_v, rr_ts, rr_v, ppg):
+    """
+    Calcule FC/RR/PWA moyenne pour chaque niveau à partir des séries temporelles.
+    Enrichit le JSON live_events avec ces valeurs.
+    """
+    try:
+        with open(EVENTS_FILE) as f:
+            ev = json.load(f)
+
+        def mean_in_window(ts_series, v_series, t_start, t_end):
+            if t_end is None:
+                t_end = max(ts_series) if ts_series else t_start + 30
+            vals = [v for t, v in zip(ts_series, v_series)
+                    if v is not None and t_start <= t <= t_end]
+            return float(sum(vals)/len(vals)) if vals else None
+
+        for phase in ("levels_normal", "levels_chunking"):
+            lvs = ev.get(phase, [])
+            for i, lv in enumerate(lvs):
+                t0 = lv.get("ts", 0)
+                t1 = lv.get("ts_end") or (lvs[i+1]["ts"] if i+1 < len(lvs) else None)
+                lv["hr_bpm"]        = mean_in_window(fc_ts, fc_v,    t0, t1)
+                lv["rr_rpm"]        = mean_in_window(rr_ts, rr_v,    t0, t1)
+                # PWA depuis ppg brut
+                if all_ts:
+                    pwa_vals = [ppg.pwa_raw] if ppg.pwa_raw else []
+                    # approximation : dernier pwa_raw connu
+                    lv["ppg_amplitude"] = ppg.pwa_raw
+
+        with open(EVENTS_FILE, "w") as f:
+            json.dump(ev, f)
+        print("[physio] Niveaux enrichis avec FC/RR")
+    except Exception as e:
+        print(f"[physio] Erreur enrichissement : {e}")
+
 
 def _show_final_in_fig(fig, gs,
                        all_ts, all_ppg, all_pzt,
@@ -401,6 +472,8 @@ def _show_final_in_fig(fig, gs,
     """Remplace les axes temps réel par le rapport final dans la même fenêtre."""
     import matplotlib.pyplot as plt
     import matplotlib.gridspec as gridspec
+
+    # (enrichissement déjà fait dans update() avant l'appel)
 
     # Effacer tous les axes existants
     for ax in fig.get_axes():
