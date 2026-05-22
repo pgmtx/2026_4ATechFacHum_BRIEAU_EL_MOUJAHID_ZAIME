@@ -162,7 +162,8 @@ def patch_game(game):
     orig_sum_init   = SummaryState.__init__
     orig_sum_draw   = SummaryState.draw
     orig_sum_handle = SummaryState.handle_events
-    _surf = [None]
+    _surf    = [None]   # liste de pygame.Surface
+    _fig_idx = [0]      # index courant galerie
 
     def new_sum_init(self_s, gr):
         orig_sum_init(self_s, gr)
@@ -197,41 +198,75 @@ def patch_game(game):
                           stdout=None, stderr=None, env=_env)
         proc.wait(timeout=10)  # attendre la fin
 
+        # Charger toutes les figures depuis l'index
         import glob as _gl
-        files = sorted(_gl.glob("sessions/comparaison_*.png"), reverse=True)
-        if files:
+
+        try:
+            with open("sessions/figures_index.json") as _f:
+                idx = json.load(_f)
+            fig_paths = idx.get("figures", [])
+        except Exception:
+            fig_paths = sorted(_gl.glob("sessions/fig_*.png"), reverse=True)[:5]
+
+        surfs = []
+        sw = gr.screen.get_width(); sh = gr.screen.get_height()
+        title_h = 120; avail_h = sh - title_h - 80
+        for fp in fig_paths:
             try:
-                surf = pygame.image.load(files[0])
-                sw = gr.screen.get_width(); sh = gr.screen.get_height()
-                title_h = 130
-                ratio = min((sw-40)/surf.get_width(), (sh-title_h-60)/surf.get_height())
-                nw = int(surf.get_width()*ratio); nh = int(surf.get_height()*ratio)
-                _surf[0] = pygame.transform.smoothscale(surf, (nw, nh))
-                print(f"[game] Comparaison chargee")
+                s = pygame.image.load(fp)
+                ratio = min((sw-60)/s.get_width(), avail_h/s.get_height())
+                nw = int(s.get_width()*ratio); nh = int(s.get_height()*ratio)
+                surfs.append(pygame.transform.smoothscale(s, (nw, nh)))
             except Exception as e:
-                print(f"[game] Erreur PNG : {e}")
+                print(f"[game] Erreur chargement {fp}: {e}")
+
+        if surfs:
+            _surf[0] = surfs      # liste de surfaces
+            _fig_idx[0] = 0
+            print(f"[game] {len(surfs)} figures chargees")
+        else:
+            _surf[0] = None
 
     def new_sum_draw(self_s):
-        if _surf[0]:
-            self_s.game.screen.fill("#014F84")
-            self_s.game.screen.blit(self_s.title, self_s.title_rect)
-            x = (self_s.game.screen.get_width()  - _surf[0].get_width())  // 2
-            y = self_s.title_rect.bottom + 10
-            self_s.game.screen.blit(_surf[0], (x, y))
+        if _surf[0] and isinstance(_surf[0], list) and len(_surf[0]) > 0:
+            scr = self_s.game.screen
+            sw  = scr.get_width(); sh = scr.get_height()
+            scr.fill("#014F84")
+            # Titre
+            scr.blit(self_s.title, self_s.title_rect)
+            # Figure courante
+            idx  = _fig_idx[0] % len(_surf[0])
+            surf = _surf[0][idx]
+            x = (sw - surf.get_width())  // 2
+            y = self_s.title_rect.bottom + 5
+            scr.blit(surf, (x, y))
+            # Navigation
             font = pygame.font.SysFont("Arial", 20)
-            txt  = font.render("ESC = menu", True, (200, 200, 200))
-            self_s.game.screen.blit(txt,
-                (self_s.game.screen.get_width()//2 - txt.get_width()//2,
-                 self_s.game.screen.get_height() - 35))
+            nav  = font.render(
+                f"< >  Figure {idx+1}/{len(_surf[0])}  |  ESC = menu",
+                True, (200, 200, 200))
+            scr.blit(nav, (sw//2 - nav.get_width()//2, sh - 35))
+            # Noms des figures
+            names = ["FC","RR","PWA","Succes","Erreurs"]
+            if idx < len(names):
+                lbl = font.render(names[idx], True, (255,255,200))
+                scr.blit(lbl, (sw//2 - lbl.get_width()//2, sh - 60))
         else:
             orig_sum_draw(self_s)
 
     def new_sum_handle(self_s, events):
         orig_sum_handle(self_s, events)
         for ev in events:
-            if ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
-                self_s.game.current_state = self_s.game.states["menu"]
-                _surf[0] = None
+            if ev.type == pygame.KEYDOWN:
+                if ev.key == pygame.K_ESCAPE:
+                    self_s.game.current_state = self_s.game.states["menu"]
+                    _surf[0] = None
+                elif ev.key in (pygame.K_RIGHT, pygame.K_d):
+                    if _surf[0] and isinstance(_surf[0], list):
+                        _fig_idx[0] = (_fig_idx[0] + 1) % len(_surf[0])
+                elif ev.key in (pygame.K_LEFT, pygame.K_q):
+                    if _surf[0] and isinstance(_surf[0], list):
+                        _fig_idx[0] = (_fig_idx[0] - 1) % len(_surf[0])
 
     SummaryState.__init__      = new_sum_init
     SummaryState.draw          = new_sum_draw
