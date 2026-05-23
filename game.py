@@ -767,10 +767,15 @@ class PairArrowState(State):
             break
 
 
+
 class SummaryState(State):
     def __init__(self, game: Game) -> None:
         self.game = game
-        self.title, self.title_rect = get_title(game, "RÉSUMÉ", 64)
+        # Titre positionné plus haut
+        self.title, self.title_rect = create_text(
+            "RÉSUMÉ", int(64 * game.scale),
+            game.width // 2, game.height // 10, game.scale
+        )
         self.text, self.text_rect = create_text(
             "[afficher les graphes ici]",
             28,

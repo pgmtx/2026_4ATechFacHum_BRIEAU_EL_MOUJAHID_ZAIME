@@ -2,12 +2,12 @@
 ChunkyMemo — main.py (architecture finale simple)
 
 Lance 2 sous-processus indépendants en parallèle :
-  1. game_only.py   — jeu pygame pur (game.py original sans modification)
-  2. physio_live.py — acquisition BITalino + graphes matplotlib (FuncAnimation)
+  1. game_runner.py   — jeu pygame pur 
+  2. biosignal_monitor.py — acquisition BITalino + graphes matplotlib 
 
 Les deux communiquent via sessions/live_events.json :
-  - game_only.py écrit les événements jeu (niveaux, touches, score)
-  - physio_live.py les lit pour annoter ses graphes
+  - game_runner .py écrit les événements jeu (niveaux, touches, score)
+  - biosignal_monitor.py les lit pour annoter ses graphes
 """
 
 import subprocess
@@ -30,16 +30,16 @@ def main():
     print("[main] Fenêtre JEU  → gauche  |  Fenêtre GRAPHES → bas-gauche")
     print()
 
-    game_proc   = subprocess.Popen([sys.executable, "game_only.py"])
-    physio_proc = subprocess.Popen([sys.executable, "physio_live.py"])
+    game_proc   = subprocess.Popen([sys.executable, "game_runner.py"])
+    physio_proc = subprocess.Popen([sys.executable, "biosignal_monitor.py"])
 
     print(f"[main] Jeu PID={game_proc.pid}  Physio PID={physio_proc.pid}")
     print("[main] Fermez la fenêtre JEU pour terminer les deux")
 
     # Attendre que le jeu se termine (le joueur ferme pygame)
     game_proc.wait()
-    print("[main] Jeu terminé — physio_live reste ouvert (fermez la fenêtre matplotlib)")
-    # Attendre que physio_live se ferme tout seul (l'utilisateur ferme la fenêtre)
+    print("[main] Jeu terminé — biosignal_monitor reste ouvert (fermez la fenêtre matplotlib)")
+    # Attendre que biosignal_monitor se ferme tout seul (l'utilisateur ferme la fenêtre)
     physio_proc.wait()
     print("[main] Terminé")
 
