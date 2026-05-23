@@ -305,8 +305,27 @@ direction_keys = (pygame.K_LEFT, pygame.K_UP, pygame.K_RIGHT, pygame.K_DOWN)
 rotations = (0, -90, 180, 90)
 
 
-def get_random_direction() -> str:
-    return random.choice(directions)
+def pick_direction(history: list[str]) -> str:
+    # No more than two consecutive identical directions
+    if len(history) >= 2 and history[-1] == history[-2]:
+        choices = [d for d in directions if d != history[-1]]
+    else:
+        choices = directions
+    return random.choice(choices)
+
+
+def pick_pair(history: list[tuple[str, str]]) -> tuple[str, str]:
+    # No more than two consecutive identical directions (a pair of identical arrows is ok)
+    while True:
+        a = random.choice(directions)
+        b = random.choice(directions)
+
+        if history:
+            previous = history[-1][1]
+            if previous == a == b:
+                continue
+
+        return a, b
 
 
 def get_rotation_from_direction(direction: str) -> int:
@@ -363,7 +382,7 @@ class SingleArrowState(State):
         self.game = game
         self.title, self.title_rect = get_title(game, "JEU", 64)
         self.arrows_count = 1
-        self.arrow_directions = [get_random_direction()]
+        self.arrow_directions = [pick_direction([])]
 
         margin = 20
         spacing_const = 40
@@ -430,7 +449,7 @@ class SingleArrowState(State):
     def _start_next_round(self):
         self.pressed_directions = 0
         self.arrows_count += 1
-        self.arrow_directions.append(get_random_direction())
+        self.arrow_directions.append(pick_direction(self.arrow_directions))
         self.inited = False
         self.chosen_direction = None
         self.show_arrows = True
@@ -557,23 +576,17 @@ class PrePairState(State):
 
 
 class PairArrowState(State):
-    def __init__(self, game: Game, initial_count: int = 1) -> None:
+    def __init__(self, game: Game) -> None:
         self.game = game
         self.title, self.title_rect = get_title(game, "PAIR MODE", 64)
-
-        pair_count = max(1, initial_count // 2)
-        self.pair_directions = [
-            (get_random_direction(), get_random_direction()) for _ in range(pair_count)
-        ]
+        self.pair_directions = [pick_pair([])]
 
         margin = 40
         spacing = 24 * game.scale
         tile_size = int(128 * game.scale)
         self.tile_size = tile_size
         y = (game.height - tile_size) // 2
-        xs = _compute_centered_x_positions(
-            game.width, tile_size, pair_count, margin, spacing
-        )
+        xs = _compute_centered_x_positions(game.width, tile_size, 1, margin, spacing)
         self.tile_positions = [(x, y) for x in xs]
 
         self.arrow_size = int(48 * game.scale)
@@ -598,7 +611,7 @@ class PairArrowState(State):
         return self.time_between_tiles * (len(self.pair_directions) + 1)
 
     def _start_next_round(self):
-        self.pair_directions.append((get_random_direction(), get_random_direction()))
+        self.pair_directions.append(pick_pair(self.pair_directions))
         y = (self.game.height - self.tile_size) // 2
         xs = _compute_centered_x_positions(
             self.game.width,
