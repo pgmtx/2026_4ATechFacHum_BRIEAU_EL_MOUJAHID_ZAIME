@@ -411,9 +411,6 @@ class SingleArrowState(State):
                 return
 
             mapped = key_to_direction(event.key)
-            print(
-                f"key event: {event.key} -> {pygame.key.name(event.key)} mapped to {mapped}"
-            )
             self.chosen_direction = mapped
 
     def update(self):
@@ -444,11 +441,7 @@ class SingleArrowState(State):
     def display_arrows_progressively(self):
         end = pygame.time.get_ticks()
         elapsed = end - self.start
-        print(
-            f"display_progress: elapsed={elapsed} total_display_duration={self.total_display_duration} arrows_count={self.arrows_count} arrows_to_show={self.arrows_to_show}"
-        )
         if elapsed > self.total_display_duration:
-            print("display_progress: switching to input phase")
             self.show_arrows = False
             self.arrows_to_show = 0
             self.chosen_direction = None
@@ -456,16 +449,12 @@ class SingleArrowState(State):
             i = min(elapsed // self.time_between_arrows, self.arrows_count)
             if self.arrows_to_show != i:
                 self.arrows_to_show = i
-                print(f"display_progress: arrows_to_show -> {self.arrows_to_show}")
 
     def handle_player_inputs(self):
         if self.chosen_direction is None:
             return
         expected = self.arrow_directions[self.pressed_directions]
         if self.chosen_direction != expected:
-            print(
-                f"MISMATCH: chosen={self.chosen_direction} expected={expected} index={self.pressed_directions} seq={self.arrow_directions}"
-            )
             if len(self.arrow_directions) >= 5:
                 self.game.current_state = self.game.states["pre_pair"]
             else:
@@ -473,9 +462,6 @@ class SingleArrowState(State):
             return
 
         self.pressed_directions += 1
-        print(
-            f"INPUT: correct press, pressed_directions={self.pressed_directions} arrows_count={self.arrows_count} show_arrows={self.show_arrows}"
-        )
         # consume the input so it isn't processed again on the next frame
         self.chosen_direction = None
 
@@ -497,23 +483,15 @@ class SingleArrowState(State):
             self.draw_input_phase(positions)
 
     def draw_display_phase(self, positions):
-        print(
-            f"draw display: arrows_to_show={self.arrows_to_show} positions={len(positions)} dirs={len(self.arrow_directions)}"
-        )
         it = zip(positions, self.arrow_directions)
-        for idx, (x, direction) in enumerate(itertools.islice(it, self.arrows_to_show)):
-            print(f"draw display: blitting idx={idx} direction={direction} at x={x}")
+        for x, direction in itertools.islice(it, self.arrows_to_show):
             self.game.screen.blit(self.arrow_images[direction], (x, self.square_y))
 
     def draw_input_phase(self, positions):
-        print(
-            f"draw input: pressed={self.pressed_directions} positions={len(positions)} dirs={len(self.arrow_directions)}"
-        )
         for i, (x, direction) in enumerate(zip(positions, self.arrow_directions)):
             if i >= self.pressed_directions:
                 break
             img = self.arrow_images_grey[direction]
-            print(f"draw input: blitting grey idx={i} direction={direction} at x={x}")
             self.game.screen.blit(img, (x, self.square_y))
 
 
