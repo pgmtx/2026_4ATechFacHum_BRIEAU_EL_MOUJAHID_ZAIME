@@ -1,12 +1,19 @@
 """
 analysis.py - Comparaison Normal vs Chunking - figures individuelles
 """
-import json, sys, os, glob, time
+
+import glob
+import json
+import os
+import sys
+import time
+
 import numpy as np
 
 _HEADLESS = os.environ.get("MPLBACKEND") == "Agg"
 if _HEADLESS:
     import matplotlib
+
     matplotlib.use("Agg")
 
 import matplotlib
@@ -28,13 +35,14 @@ def load_data():
     if files:
         with open(files[0]) as f:
             return json.load(f)
-    print("Aucune session trouvee"); sys.exit(1)
+    print("Aucune session trouvee")
+    sys.exit(1)
 
 
 def _vals(levels, key):
-    pairs = [(int(lv["level"]), lv[key])
-             for lv in levels if lv.get(key) is not None]
-    if not pairs: return [], []
+    pairs = [(int(lv["level"]), lv[key]) for lv in levels if lv.get(key) is not None]
+    if not pairs:
+        return [], []
     pairs.sort()
     ls, vs = zip(*pairs)
     return list(ls), list(vs)
@@ -62,41 +70,61 @@ def _base(ax, title, ylabel):
 
 def _legend():
     return [
-        Line2D([0],[0], color=C_N, lw=2.5, marker="o", ms=8, label="Mode Normal"),
-        Line2D([0],[0], color=C_C, lw=2.5, marker="s", ms=8, label="Mode Chunking"),
-        Line2D([0],[0], color="purple", lw=1.5, ls="--", label="Limite 7+/-2 (Miller)"),
+        Line2D([0], [0], color=C_N, lw=2.5, marker="o", ms=8, label="Mode Normal"),
+        Line2D([0], [0], color=C_C, lw=2.5, marker="s", ms=8, label="Mode Chunking"),
+        Line2D(
+            [0], [0], color="purple", lw=1.5, ls="--", label="Limite 7+/-2 (Miller)"
+        ),
     ]
 
 
 def _note(ax, txt):
-    ax.text(0.97, 0.05, txt, transform=ax.transAxes, fontsize=9,
-            ha="right", va="bottom", color="#555",
-            bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.8, ec="#aaa"))
+    ax.text(
+        0.97,
+        0.05,
+        txt,
+        transform=ax.transAxes,
+        fontsize=9,
+        ha="right",
+        va="bottom",
+        color="#555",
+        bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.8, ec="#aaa"),
+    )
 
 
 def _no_data(ax):
-    ax.text(0.5, 0.5, "Pas de donnees physio disponibles",
-            transform=ax.transAxes, ha="center", va="center",
-            fontsize=13, color="gray", style="italic")
+    ax.text(
+        0.5,
+        0.5,
+        "Pas de donnees physio disponibles",
+        transform=ax.transAxes,
+        ha="center",
+        va="center",
+        fontsize=13,
+        color="gray",
+        style="italic",
+    )
 
 
 def _errs(keys, levels):
     res = {}
     for i, lv in enumerate(levels):
         t0 = lv["ts"]
-        t1 = levels[i+1]["ts"] if i+1 < len(levels) else float("inf")
+        t1 = levels[i + 1]["ts"] if i + 1 < len(levels) else float("inf")
         lk = [k for k in keys if t0 <= k["ts"] < t1]
         if lk:
-            res[int(lv["level"])] = 100 * sum(1 for k in lk if not k["correct"]) / len(lk)
+            res[int(lv["level"])] = (
+                100 * sum(1 for k in lk if not k["correct"]) / len(lk)
+            )
     return res
 
 
 def save_figures(data, prefix):
-    levels_n = [lv for lv in data.get("levels_normal",   []) if lv.get("level")]
+    levels_n = [lv for lv in data.get("levels_normal", []) if lv.get("level")]
     levels_c = [lv for lv in data.get("levels_chunking", []) if lv.get("level")]
-    keys_n   = data.get("keys_normal",   [])
-    keys_c   = data.get("keys_chunking", [])
-    paths    = []
+    keys_n = data.get("keys_normal", [])
+    keys_c = data.get("keys_chunking", [])
+    paths = []
 
     def _save(fig, name):
         p = f"{prefix}_{name}.png"
@@ -171,11 +199,23 @@ def save_figures(data, prefix):
     all_c = [lv["level"] for lv in levels_c]
     _decor(ax, all_n, all_c)
     for lv in levels_n:
-        ax.bar(lv["level"] - 0.22, 1 if lv.get("success") else 0,
-               width=0.42, color=C_N, alpha=0.85, edgecolor="white")
+        ax.bar(
+            lv["level"] - 0.22,
+            1 if lv.get("success") else 0,
+            width=0.42,
+            color=C_N,
+            alpha=0.85,
+            edgecolor="white",
+        )
     for lv in levels_c:
-        ax.bar(lv["level"] + 0.22, 1 if lv.get("success") else 0,
-               width=0.42, color=C_C, alpha=0.85, edgecolor="white")
+        ax.bar(
+            lv["level"] + 0.22,
+            1 if lv.get("success") else 0,
+            width=0.42,
+            color=C_C,
+            alpha=0.85,
+            edgecolor="white",
+        )
     ax.legend(handles=_legend()[:2], fontsize=10, loc="lower left")
     plt.tight_layout()
     _save(fig, "4_Succes")
@@ -189,12 +229,26 @@ def save_figures(data, prefix):
     _decor(ax, list(err_n.keys()), list(err_c.keys()))
     if err_n:
         sl = sorted(err_n.keys())
-        ax.bar([l - 0.22 for l in sl], [err_n[l] for l in sl],
-               width=0.42, color=C_N, alpha=0.85, edgecolor="white", label="Normal")
+        ax.bar(
+            [l - 0.22 for l in sl],
+            [err_n[l] for l in sl],
+            width=0.42,
+            color=C_N,
+            alpha=0.85,
+            edgecolor="white",
+            label="Normal",
+        )
     if err_c:
         sl = sorted(err_c.keys())
-        ax.bar([l + 0.22 for l in sl], [err_c[l] for l in sl],
-               width=0.42, color=C_C, alpha=0.85, edgecolor="white", label="Chunking")
+        ax.bar(
+            [l + 0.22 for l in sl],
+            [err_c[l] for l in sl],
+            width=0.42,
+            color=C_C,
+            alpha=0.85,
+            edgecolor="white",
+            label="Chunking",
+        )
     if not err_n and not err_c:
         _no_data(ax)
     ax.legend(fontsize=10, loc="upper left")
@@ -213,10 +267,11 @@ def main():
     try:
         import matplotlib.gridspec as gridspec
         from matplotlib.lines import Line2D as L2D
+
         # Ecrire le chemin des figures dans un fichier index
         index_file = "sessions/figures_index.json"
         with open(index_file, "w") as f:
-            json.dump({"figures": paths, "ts": time.strftime('%Y%m%d_%H%M%S')}, f)
+            json.dump({"figures": paths, "ts": time.strftime("%Y%m%d_%H%M%S")}, f)
         print(f"[analysis] Index: {index_file}")
     except Exception:
         pass

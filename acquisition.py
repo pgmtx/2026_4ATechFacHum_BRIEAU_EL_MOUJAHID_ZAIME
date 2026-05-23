@@ -16,12 +16,13 @@ Comment tester :
 ==============================================================
 """
 
-import platform
-import sys
 import os
-import time
+import platform
 import queue
+import sys
 import threading
+import time
+
 import config
 
 # ==============================================================
@@ -42,6 +43,7 @@ if SCRIPT_DIR not in sys.path:
 
 try:
     import plux
+
     _ = plux.SignalsDev
     print("[acquisition] plux charge avec succes")
 except (ImportError, AttributeError):
@@ -56,19 +58,22 @@ except (ImportError, AttributeError):
         path = f"MacOS/Intel{pv[0]}{pv[1]}"
     else:
         path = "Linux64"
-    print(f"  https://github.com/pluxbiosignals/python-samples/tree/master/PLUX-API-Python3/{path}")
+    print(
+        f"  https://github.com/pluxbiosignals/python-samples/tree/master/PLUX-API-Python3/{path}"
+    )
     sys.exit(1)
 
 
 # ==============================================================
 # CLASSE DEVICE — sous-classe de plux.SignalsDev
-# Identique au NewDevice du prof, données vers queue
+# Identique au NewDevice de l'exemple de départ, données vers queue
 # ==============================================================
+
 
 class ChunkyDevice(plux.SignalsDev):
     """
     Sous-classe de plux.SignalsDev.
-    Identique au NewDevice du prof — __init__ prend SEULEMENT address.
+    Identique au NewDevice de l'exemple de départ — __init__ prend SEULEMENT address.
     data_queue et stop_event sont assignes depuis run() apres creation.
 
     ACTIVE_PORTS = [3, 4]
@@ -77,15 +82,14 @@ class ChunkyDevice(plux.SignalsDev):
     """
 
     def __init__(self, address: str):
-        # Identique au prof : plux.SignalsDev.__init__(address)
         # PAS de self, PAS d'autres arguments — c'est la convention plux
         plux.SignalsDev.__init__(address)
         # Ces attributs seront assignes depuis run() apres creation :
         # self.data_queue, self.stop_event
-        self.data_queue  = None
-        self.stop_event  = None
-        self.duration    = config.DURATION_MAX
-        self.frequency   = config.SAMPLING_RATE
+        self.data_queue = None
+        self.stop_event = None
+        self.duration = config.DURATION_MAX
+        self.frequency = config.SAMPLING_RATE
         self._last_print = 0
 
     def onRawFrame(self, nSeq, data):
@@ -99,33 +103,35 @@ class ChunkyDevice(plux.SignalsDev):
         Retourne False → continue
         """
         sample = {
-            "ts":   time.time(),              # horodatage Unix precis
-            "nSeq": nSeq,                     # numero de frame depuis le debut
-            "ppg":  int(data[config.IDX_PPG]),# pouls — valeur brute 0-65535
-            "pzt":  int(data[config.IDX_PZT]),# respiration — valeur brute 0-65535
-            "raw":  list(data),               # toutes les valeurs brutes du frame
+            "ts": time.time(),  # horodatage Unix precis
+            "nSeq": nSeq,  # numero de frame depuis le debut
+            "ppg": int(data[config.IDX_PPG]),  # pouls — valeur brute 0-65535
+            "pzt": int(data[config.IDX_PZT]),  # respiration — valeur brute 0-65535
+            "raw": list(data),  # toutes les valeurs brutes du frame
         }
 
         try:
             self.data_queue.put_nowait(sample)  # non bloquant
         except queue.Full:
-            pass   # queue pleine → on perd l echantillon plutot que de bloquer
+            pass  # queue pleine → on perd l echantillon plutot que de bloquer
 
         # Debug : 1 ligne par seconde dans la console
         now = time.time()
         if now - self._last_print >= 1.0:
-            print(f"[BITalino] nSeq={nSeq:6d} | "
-                  f"ppg={sample['ppg']:5d} | "
-                  f"pzt={sample['pzt']:5d}")
+            print(
+                f"[BITalino] nSeq={nSeq:6d} | "
+                f"ppg={sample['ppg']:5d} | "
+                f"pzt={sample['pzt']:5d}"
+            )
             self._last_print = now
 
-        # Condition d'arret — identique au prof
         return self.stop_event.is_set() or (nSeq > self.duration * self.frequency)
 
 
 # ==============================================================
 # THREAD D'ACQUISITION
 # ==============================================================
+
 
 class AcquisitionThread(threading.Thread):
     """
@@ -141,29 +147,29 @@ class AcquisitionThread(threading.Thread):
     """
 
     def __init__(self, data_queue: queue.Queue):
-        super().__init__(daemon=True)   # s arrete avec le programme principal
+        super().__init__(daemon=True)  # s arrete avec le programme principal
         self.data_queue = data_queue
         self.stop_event = threading.Event()
-        self.device     = None
+        self.device = None
 
     def run(self):
         """Acquisition reelle uniquement — pas de simulation."""
         try:
             print(f"[acquisition] Connexion a {config.MAC_ADDRESS} ...")
-            # Creation identique au prof : NewDevice(address)
-            # Puis on assigne data_queue et stop_event comme attributs
-            self.device             = ChunkyDevice(config.MAC_ADDRESS)
-            self.device.data_queue  = self.data_queue
-            self.device.stop_event  = self.stop_event
-            self.device.duration    = config.DURATION_MAX
-            self.device.frequency   = config.SAMPLING_RATE
+            # On assigne data_queue et stop_event comme attributs
+            self.device = ChunkyDevice(config.MAC_ADDRESS)
+            self.device.data_queue = self.data_queue
+            self.device.stop_event = self.stop_event
+            self.device.duration = config.DURATION_MAX
+            self.device.frequency = config.SAMPLING_RATE
 
-            # device.start(frequency, active_ports, resolution) — identique au prof
-            self.device.start(config.SAMPLING_RATE,
-                              config.ACTIVE_PORTS,
-                              config.RESOLUTION)
-            print(f"[acquisition] Demarre — "
-                  f"ports={config.ACTIVE_PORTS} @ {config.SAMPLING_RATE}Hz")
+            self.device.start(
+                config.SAMPLING_RATE, config.ACTIVE_PORTS, config.RESOLUTION
+            )
+            print(
+                f"[acquisition] Demarre — "
+                f"ports={config.ACTIVE_PORTS} @ {config.SAMPLING_RATE}Hz"
+            )
 
             # device.loop() bloque jusqu a ce que onRawFrame retourne True
             self.device.loop()
@@ -194,9 +200,10 @@ class AcquisitionThread(threading.Thread):
 # ==============================================================
 
 if __name__ == "__main__":
-    import matplotlib.pyplot as plt
-    import matplotlib.patches as mpatches
     from collections import deque
+
+    import matplotlib.patches as mpatches
+    import matplotlib.pyplot as plt
 
     print("=" * 50)
     print("TEST ACQUISITION REELLE — ChunkyMemo")
@@ -216,54 +223,67 @@ if __name__ == "__main__":
     print()
 
     TEST_DURATION = 30
-    WINDOW_SHOW   = 10.0
-    REFRESH_SEC   = 0.1
+    WINDOW_SHOW = 10.0
+    REFRESH_SEC = 0.1
 
-    KEYMAP      = {"z":"UP","Z":"UP","s":"DOWN","S":"DOWN",
-                   "q":"LEFT","Q":"LEFT","d":"RIGHT","D":"RIGHT"}
-    ARROW_LABEL = {"UP":"fleche haut","DOWN":"fleche bas",
-                   "LEFT":"fleche gauche","RIGHT":"fleche droite"}
-    ARROW_COLOR = {"UP":"green","DOWN":"red","LEFT":"blue","RIGHT":"purple"}
-    DIR_Y       = {"LEFT":0,"DOWN":1,"UP":2,"RIGHT":3}
+    KEYMAP = {
+        "z": "UP",
+        "Z": "UP",
+        "s": "DOWN",
+        "S": "DOWN",
+        "q": "LEFT",
+        "Q": "LEFT",
+        "d": "RIGHT",
+        "D": "RIGHT",
+    }
+    ARROW_LABEL = {
+        "UP": "fleche haut",
+        "DOWN": "fleche bas",
+        "LEFT": "fleche gauche",
+        "RIGHT": "fleche droite",
+    }
+    ARROW_COLOR = {"UP": "green", "DOWN": "red", "LEFT": "blue", "RIGHT": "purple"}
+    DIR_Y = {"LEFT": 0, "DOWN": 1, "UP": 2, "RIGHT": 3}
 
     all_ppg, all_pzt, all_ts = [], [], []
-    key_events      = []
+    key_events = []
     key_events_lock = threading.Lock()
-    stop_flag       = [False]   # utilise pour arreter la boucle principale
+    stop_flag = [False]  # utilise pour arreter la boucle principale
 
     # Desactiver les raccourcis clavier par defaut de matplotlib
     # qui entrent en conflit avec nos touches de jeu :
     #   s → save figure    q → quit    z/Z → zoom
     #   d → xscale         g → grid    p → pan
     import matplotlib
-    for key in ['s', 'q', 'z', 'Z', 'd', 'g', 'p', 'f', 'h', 'l']:
-        if key in matplotlib.rcParams.get('keymap.save', []):
-            matplotlib.rcParams['keymap.save'].remove(key)
-        if key in matplotlib.rcParams.get('keymap.quit', []):
-            matplotlib.rcParams['keymap.quit'].remove(key)
-        if key in matplotlib.rcParams.get('keymap.zoom', []):
-            matplotlib.rcParams['keymap.zoom'].remove(key)
-        if key in matplotlib.rcParams.get('keymap.xscale', []):
-            matplotlib.rcParams['keymap.xscale'].remove(key)
-        if key in matplotlib.rcParams.get('keymap.yscale', []):
-            matplotlib.rcParams['keymap.yscale'].remove(key)
-        if key in matplotlib.rcParams.get('keymap.grid', []):
-            matplotlib.rcParams['keymap.grid'].remove(key)
-        if key in matplotlib.rcParams.get('keymap.pan', []):
-            matplotlib.rcParams['keymap.pan'].remove(key)
-        if key in matplotlib.rcParams.get('keymap.fullscreen', []):
-            matplotlib.rcParams['keymap.fullscreen'].remove(key)
-        if key in matplotlib.rcParams.get('keymap.home', []):
-            matplotlib.rcParams['keymap.home'].remove(key)
-        if key in matplotlib.rcParams.get('keymap.back', []):
-            matplotlib.rcParams['keymap.back'].remove(key)
+
+    for key in ["s", "q", "z", "Z", "d", "g", "p", "f", "h", "l"]:
+        if key in matplotlib.rcParams.get("keymap.save", []):
+            matplotlib.rcParams["keymap.save"].remove(key)
+        if key in matplotlib.rcParams.get("keymap.quit", []):
+            matplotlib.rcParams["keymap.quit"].remove(key)
+        if key in matplotlib.rcParams.get("keymap.zoom", []):
+            matplotlib.rcParams["keymap.zoom"].remove(key)
+        if key in matplotlib.rcParams.get("keymap.xscale", []):
+            matplotlib.rcParams["keymap.xscale"].remove(key)
+        if key in matplotlib.rcParams.get("keymap.yscale", []):
+            matplotlib.rcParams["keymap.yscale"].remove(key)
+        if key in matplotlib.rcParams.get("keymap.grid", []):
+            matplotlib.rcParams["keymap.grid"].remove(key)
+        if key in matplotlib.rcParams.get("keymap.pan", []):
+            matplotlib.rcParams["keymap.pan"].remove(key)
+        if key in matplotlib.rcParams.get("keymap.fullscreen", []):
+            matplotlib.rcParams["keymap.fullscreen"].remove(key)
+        if key in matplotlib.rcParams.get("keymap.home", []):
+            matplotlib.rcParams["keymap.home"].remove(key)
+        if key in matplotlib.rcParams.get("keymap.back", []):
+            matplotlib.rcParams["keymap.back"].remove(key)
 
     # Detection des touches directement dans la fenetre matplotlib
     # input() dans un thread ne marche pas sous Windows quand matplotlib est actif
     # mpl_connect capte les touches peu importe ou est le focus
     def on_key_press(event):
         ts = time.time() - start
-        d  = KEYMAP.get(event.key)
+        d = KEYMAP.get(event.key)
         if d:
             with key_events_lock:
                 key_events.append((ts, d))
@@ -271,17 +291,17 @@ if __name__ == "__main__":
 
     # Demarrer acquisition
     data_q = queue.Queue(maxsize=config.QUEUE_MAXSIZE)
-    acq    = AcquisitionThread(data_q)
+    acq = AcquisitionThread(data_q)
     acq.start()
-    start  = time.time()
+    start = time.time()
 
     # Graphique temps reel — 3 subplots
     plt.ion()
     fig, (ax_ppg, ax_pzt, ax_keys) = plt.subplots(3, 1, figsize=(14, 9), sharex=False)
     fig.suptitle("Acquisition temps reel ChunkyMemo", fontsize=12)
 
-    line_ppg, = ax_ppg.plot([], [], color="tab:red",    linewidth=0.9)
-    line_pzt, = ax_pzt.plot([], [], color="tab:orange", linewidth=0.9)
+    (line_ppg,) = ax_ppg.plot([], [], color="tab:red", linewidth=0.9)
+    (line_pzt,) = ax_pzt.plot([], [], color="tab:orange", linewidth=0.9)
 
     ax_ppg.set_ylabel("PPG (pouls)")
     ax_ppg.set_title("Photoplethysmographie")
@@ -301,7 +321,7 @@ if __name__ == "__main__":
 
     plt.tight_layout()
     # mpl_connect capte les touches dans la fenetre matplotlib sans bloquer
-    fig.canvas.mpl_connect('key_press_event', on_key_press)
+    fig.canvas.mpl_connect("key_press_event", on_key_press)
 
     print(f"Acquisition en cours ({TEST_DURATION}s)...")
     print("Cliquez sur la fenetre et tapez Z/S/Q/D pour marquer des fleches")
@@ -330,7 +350,7 @@ if __name__ == "__main__":
         # Mettre a jour PPG et PZT
         mask = [i for i, t in enumerate(all_ts) if t >= t_min]
         if mask:
-            ts_w  = [all_ts[i]  for i in mask]
+            ts_w = [all_ts[i] for i in mask]
             ppg_w = [all_ppg[i] for i in mask]
             pzt_w = [all_pzt[i] for i in mask]
 
@@ -358,16 +378,25 @@ if __name__ == "__main__":
 
         for ts_k, d in keys_snap:
             if ts_k >= t_min:
-                ax_keys.scatter(ts_k, DIR_Y[d],
-                                color=ARROW_COLOR[d], s=120, zorder=5, marker="D")
+                ax_keys.scatter(
+                    ts_k, DIR_Y[d], color=ARROW_COLOR[d], s=120, zorder=5, marker="D"
+                )
                 ax_keys.annotate(
-                    {"UP":"haut","DOWN":"bas","LEFT":"gauche","RIGHT":"droite"}[d],
-                    xy=(ts_k, DIR_Y[d]), fontsize=11, ha="center", va="bottom",
-                    color=ARROW_COLOR[d], fontweight="bold"
+                    {"UP": "haut", "DOWN": "bas", "LEFT": "gauche", "RIGHT": "droite"}[
+                        d
+                    ],
+                    xy=(ts_k, DIR_Y[d]),
+                    fontsize=11,
+                    ha="center",
+                    va="bottom",
+                    color=ARROW_COLOR[d],
+                    fontweight="bold",
                 )
 
         remaining = max(0, TEST_DURATION - t_now)
-        fig.suptitle(f"Acquisition temps reel — {remaining:.0f}s restantes", fontsize=12)
+        fig.suptitle(
+            f"Acquisition temps reel — {remaining:.0f}s restantes", fontsize=12
+        )
 
         # Arreter l'animation quand la duree est ecoulee
         if t_now >= TEST_DURATION:
@@ -376,10 +405,12 @@ if __name__ == "__main__":
         return line_ppg, line_pzt
 
     # interval=100ms = 10 fps — assez rapide pour voir les signaux, assez lent pour ne pas bloquer
-    ani = FuncAnimation(fig, update_graph, interval=100, blit=False, cache_frame_data=False)
-    plt.show(block=True)   # block=True = attend la fin de l'animation avant de continuer
+    ani = FuncAnimation(
+        fig, update_graph, interval=100, blit=False, cache_frame_data=False
+    )
+    plt.show(block=True)  # block=True = attend la fin de l'animation avant de continuer
 
-    stop_flag[0] = True   # signal d'arret de la boucle
+    stop_flag[0] = True  # signal d'arret de la boucle
     acq.stop()
     time.sleep(0.3)
     plt.ioff()
@@ -395,13 +426,17 @@ if __name__ == "__main__":
     print(f"Collecte      : {len(all_ppg)} echantillons")
     print(f"Freq. effect. : {len(all_ppg) / TEST_DURATION:.1f} Hz")
     print(f"Fleches tapees: {len(captured_keys)}")
-    print(f"PPG amplitude : {max(all_ppg)-min(all_ppg)}")
-    print(f"PZT amplitude : {max(all_pzt)-min(all_pzt)}")
+    print(f"PPG amplitude : {max(all_ppg) - min(all_ppg)}")
+    print(f"PZT amplitude : {max(all_pzt) - min(all_pzt)}")
 
     # Graphique final — session complete
-    fig2, (ax2_ppg, ax2_pzt, ax2_keys) = plt.subplots(3, 1, figsize=(14, 9), sharex=True)
+    fig2, (ax2_ppg, ax2_pzt, ax2_keys) = plt.subplots(
+        3, 1, figsize=(14, 9), sharex=True
+    )
     fig2.suptitle(
-        f"Session complete — {TEST_DURATION}s  |  {len(captured_keys)} fleches", fontsize=13)
+        f"Session complete — {TEST_DURATION}s  |  {len(captured_keys)} fleches",
+        fontsize=13,
+    )
 
     ax2_ppg.plot(all_ts, all_ppg, color="tab:red", linewidth=0.8)
     ax2_ppg.set_ylabel("PPG (pouls)")
@@ -427,15 +462,21 @@ if __name__ == "__main__":
         ax2_pzt.axvline(x=ts_k, color=col, linewidth=1.2, alpha=0.6, linestyle="--")
         ax2_keys.scatter(ts_k, DIR_Y[d], color=col, s=120, zorder=5, marker="D")
         ax2_keys.annotate(
-            {"UP":"haut","DOWN":"bas","LEFT":"gauche","RIGHT":"droite"}[d],
-            xy=(ts_k, DIR_Y[d]), fontsize=11, ha="center", va="bottom",
-            color=col, fontweight="bold"
+            {"UP": "haut", "DOWN": "bas", "LEFT": "gauche", "RIGHT": "droite"}[d],
+            xy=(ts_k, DIR_Y[d]),
+            fontsize=11,
+            ha="center",
+            va="bottom",
+            color=col,
+            fontweight="bold",
         )
 
     if captured_keys:
-        patches = [mpatches.Patch(color=ARROW_COLOR[d], label=ARROW_LABEL[d])
-                   for d in ["UP","DOWN","LEFT","RIGHT"]
-                   if any(ev[1]==d for ev in captured_keys)]
+        patches = [
+            mpatches.Patch(color=ARROW_COLOR[d], label=ARROW_LABEL[d])
+            for d in ["UP", "DOWN", "LEFT", "RIGHT"]
+            if any(ev[1] == d for ev in captured_keys)
+        ]
         ax2_ppg.legend(handles=patches, loc="upper right", fontsize=9)
 
     plt.tight_layout()
