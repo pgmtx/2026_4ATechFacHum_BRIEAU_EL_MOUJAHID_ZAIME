@@ -319,7 +319,12 @@ def key_to_direction(key: int) -> str:
     return directions[index]
 
 
-def _make_arrow_images(size: int) -> tuple[dict, dict, dict]:
+DirectionSurfaceMap = dict[str, pygame.Surface]
+
+
+def _make_arrow_images(
+    size: int,
+) -> tuple[DirectionSurfaceMap, DirectionSurfaceMap, DirectionSurfaceMap]:
     image = pygame.image.load("assets/arrow.png").convert_alpha()
     image = pygame.transform.smoothscale(image, (size, size))
     arrow_images = {
@@ -507,10 +512,7 @@ class SingleArrowState(State):
         for i, (x, direction) in enumerate(zip(positions, self.arrow_directions)):
             if i >= self.pressed_directions:
                 break
-            img = self.arrow_images.get(direction) or self.arrow_images_grey.get(
-                direction
-            )
-            img = self.arrow_images_grey.get(direction, img)
+            img = self.arrow_images_grey[direction]
             print(f"draw input: blitting grey idx={i} direction={direction} at x={x}")
             self.game.screen.blit(img, (x, self.square_y))
 
