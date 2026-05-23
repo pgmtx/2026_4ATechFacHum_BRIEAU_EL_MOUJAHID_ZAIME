@@ -5,7 +5,7 @@ Basé sur acquisation_processing_.py (qui marchait).
 - Attend que le jeu démarre (calib_start dans live_events.json)
 - FuncAnimation : PPG | PZT | Touches | I_cog
 - Quand game_end détecté → affiche le rapport final dans la même fenêtre
-- Pas de PNG généré
+- Sauvegarde les données complètes de la session dans live_events.json pour analysis.py
 """
 
 import platform, sys, os, time, queue, threading, json
