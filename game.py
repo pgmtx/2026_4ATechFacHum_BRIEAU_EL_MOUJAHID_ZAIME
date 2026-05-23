@@ -1,6 +1,6 @@
+import argparse
 import itertools
 import random
-import sys
 
 import pygame
 
@@ -104,7 +104,14 @@ class Game:
 
         ref_width, ref_height = 1280, 720
 
-        is_windowed = len(sys.argv) > 1 and sys.argv[1] == "--windowed"
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--windowed", action="store_true")
+        parser.add_argument("--state", type=str)
+
+        args = parser.parse_args()
+        is_windowed = args.windowed
+        start_state = args.state or "menu"
+
         self.width, self.height = ref_width, ref_height
         flags = 0
 
@@ -131,7 +138,7 @@ class Game:
             "pre_pair": PrePairState(self),
             "pair": PairArrowState(self),
         }
-        self.current_state: State = self.states["menu"]
+        self.current_state: State = self.states[start_state]
 
     def run(self):
         is_running = True
