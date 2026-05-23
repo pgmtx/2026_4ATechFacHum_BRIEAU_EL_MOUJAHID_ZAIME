@@ -461,7 +461,7 @@ class SingleArrowState(State):
             print(
                 f"MISMATCH: chosen={self.chosen_direction} expected={expected} index={self.pressed_directions} seq={self.arrow_directions}"
             )
-            if len(self.arrow_directions) >= 7:
+            if len(self.arrow_directions) >= 5:
                 self.game.current_state = self.game.states["pre_pair"]
             else:
                 self.game.current_state = self.game.states["lost"]
