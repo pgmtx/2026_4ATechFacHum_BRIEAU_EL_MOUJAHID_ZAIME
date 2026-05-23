@@ -603,7 +603,7 @@ class PairArrowState(State):
 
         self.show_pairs = True
         self.start = 0
-        self.time_between_tiles = 800
+        self.time_between_tiles = 1000
         self.tiles_to_show = 0
         self.inited = False
         self.waiting_round_transition = False
