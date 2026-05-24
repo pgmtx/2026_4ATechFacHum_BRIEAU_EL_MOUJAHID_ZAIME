@@ -1,2 +1,0 @@
-level,mode,success,seq_len,fc_bpm,rr_rpm,pwa,rt_ms,error_rate,i_cog,overload,apnea,ts_start,ts_end
-1,NORMAL,False,3,75.18796992481202,22.613065326633166,994.0475106631642,1243.8420454661052,0.6666666666666666,,False,False,1779135304.3502028,1779135311.1187556
