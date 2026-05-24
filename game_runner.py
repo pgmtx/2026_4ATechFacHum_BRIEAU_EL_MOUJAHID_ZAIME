@@ -96,7 +96,7 @@ def patch_game(game):
         if d["levels_normal"]:
             last_level = d["levels_normal"][-1]
             last_level["ts_end"] = ts()
-            last_level[-1]["success"] = True
+            last_level["success"] = True
         orig_sa_next(self)  # arrows_count += 1 ici
         # Ouvrir le nouveau niveau
         d["levels_normal"].append(
