@@ -178,7 +178,7 @@ def main():
     rr_ts, rr_v = [], []
     ic_ts, ic_v = [], []
     CALIB_SEC = 20.0
-    calibrated = [False]
+    calibrated = False
     calib_vals = {"fc": [], "pwa": [], "rr": []}
     WINDOW = 15.0
     DIR_Y = {"left": 0, "down": 1, "up": 2, "right": 3}
@@ -231,26 +231,26 @@ def main():
     except Exception:
         pass
 
-    _game_ended = [False]
-    _closing = [False]
-    _close_at = [None]
+    _game_ended = False
+    _closing = False
+    _close_at: float | None = None
 
     # ── FuncAnimation ─────────────────────────────────────────
     def update(frame):
-        # Détecter fin de jeu
-        if not _game_ended[0]:
+        nonlocal _game_ended, _closing, _close_at, calibrated
+        if not _game_ended:
             try:
                 with open(EVENTS_FILE) as _f:
                     _ev = json.load(_f)
                 if _ev.get("game_end") and not _ev.get("_report_done"):
-                    _game_ended[0] = True
-                    _close_at[0] = time.perf_counter() + 1.0
+                    _game_ended = True
+                    _close_at = time.perf_counter() + 1.0
             except Exception:
                 pass
 
-        if _game_ended[0] and _close_at[0] and time.perf_counter() >= _close_at[0]:
-            if not _closing[0]:
-                _closing[0] = True
+        if _game_ended and _close_at and time.perf_counter() >= _close_at:
+            if not _closing:
+                _closing = True
                 # Enrichir les niveaux MAINTENANT (avant que analysis.py tourne)
                 _enrich_levels(all_ts, fc_ts, fc_v, rr_ts, rr_v, ppg)
                 try:
@@ -307,8 +307,8 @@ def main():
                     rr_ts.append(ts_rel)
                     rr_v.append(pzt.rr_rpm)
             else:
-                if not calibrated[0]:
-                    calibrated[0] = True
+                if not calibrated:
+                    calibrated = True
                     if calib_vals["pwa"]:
                         ppg.set_baseline(float(np.mean(calib_vals["pwa"])))
                         cog.set_baseline("pwa", calib_vals["pwa"])
@@ -471,7 +471,7 @@ def main():
         else:
             ax_icog.set_xlim(x_min, t_now + 0.3)
             ax_icog.set_ylim(-0.5, 2.5)
-            if not calibrated[0]:
+            if not calibrated:
                 rem = max(0, CALIB_SEC - t_now)
                 ax_icog.text(
                     0.5,
@@ -491,9 +491,7 @@ def main():
         ic_s = f"I_cog={cog.i_cog:.2f}" if cog.i_cog is not None else "---"
         ov = "  ⚠SURCHARGE" if cog.overload else ""
         st = (
-            "[CALIBRATION — restez immobile]"
-            if not calibrated[0]
-            else f"I_cog={ic_s}{ov}"
+            "[CALIBRATION — restez immobile]" if not calibrated else f"I_cog={ic_s}{ov}"
         )
         fig.suptitle(f"ChunkyMemo — {fc_s}  {rr_s}  {st}", fontsize=11)
 
