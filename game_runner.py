@@ -207,7 +207,7 @@ def patch_game(game):
     orig_sum_init = SummaryState.__init__
     orig_sum_draw = SummaryState.draw
     orig_sum_handle = SummaryState.handle_events
-    _surf = [None]  # liste de pygame.Surface
+    _surf: list[list[pygame.Surface] | None] = [None]
     _fig_idx = [0]  # index courant galerie
 
     def new_sum_init(self: SummaryState, gr: Game):
@@ -250,8 +250,6 @@ def patch_game(game):
         proc.wait(timeout=10)  # attendre la fin
 
         # Charger toutes les figures depuis l'index
-        import glob as _gl
-
         try:
             with open("sessions/figures_index.json") as _f:
                 idx = json.load(_f)
@@ -259,7 +257,7 @@ def patch_game(game):
         except Exception:
             fig_paths = sorted(_gl.glob("sessions/fig_*.png"), reverse=True)[:5]
 
-        surfs = []
+        surfs: list[pygame.Surface] = []
         sw = gr.screen.get_width()
         sh = gr.screen.get_height()
         title_h = 120
