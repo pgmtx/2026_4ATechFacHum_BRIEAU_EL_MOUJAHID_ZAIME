@@ -106,14 +106,31 @@ def _no_data(ax):
 
 def _errs(keys, levels):
     res = {}
+    if not keys or not levels:
+        return res
+
+    keys_sorted = sorted(keys, key=lambda k: k["ts"])
+    key_idx = 0
+    total_keys = len(keys_sorted)
+
     for i, lv in enumerate(levels):
         t0 = lv["ts"]
         t1 = levels[i + 1]["ts"] if i + 1 < len(levels) else float("inf")
-        lk = [k for k in keys if t0 <= k["ts"] < t1]
-        if lk:
-            res[int(lv["level"])] = (
-                100 * sum(1 for k in lk if not k["correct"]) / len(lk)
-            )
+
+        while key_idx < total_keys and keys_sorted[key_idx]["ts"] < t0:
+            key_idx += 1
+
+        window_idx = key_idx
+        window_total = 0
+        window_errors = 0
+        while window_idx < total_keys and keys_sorted[window_idx]["ts"] < t1:
+            window_total += 1
+            if not keys_sorted[window_idx]["correct"]:
+                window_errors += 1
+            window_idx += 1
+
+        if window_total:
+            res[int(lv["level"])] = 100 * window_errors / window_total
     return res
 
 

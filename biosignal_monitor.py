@@ -1,5 +1,5 @@
 """
-physio_live.py — Acquisition BITalino + graphes matplotlib temps réel.
+biosignal_monitor.py — Acquisition BITalino + graphes matplotlib temps réel.
 
 Basé sur acquisation_processing_.py (qui marchait).
 - Attend que le jeu démarre (calib_start dans live_events.json)
@@ -29,7 +29,7 @@ if SCRIPT_DIR not in sys.path:
 try:
     import plux
 
-    _ = plux.SignalsDev
+    SignalsDev = getattr(plux, "SignalsDev")
     logging.info("[plux] chargé")
 except (ImportError, AttributeError):
     pv = platform.python_version().split(".")
@@ -41,9 +41,9 @@ EVENTS_FILE = "sessions/live_events.json"
 
 
 # ── BITalino ──────────────────────────────────────────────────
-class ChunkyDevice(plux.SignalsDev):
+class ChunkyDevice(SignalsDev):
     def __init__(self, address):
-        plux.SignalsDev.__init__(address)
+        SignalsDev.__init__(address)
         self.data_queue = None
         self.stop_event = None
         self.duration = config.DURATION_MAX
@@ -225,9 +225,11 @@ def main():
     # Positionner la fenêtre
     try:
         mgr = fig.canvas.manager
-        sh = mgr.window.winfo_screenheight()
-        mgr.window.wm_geometry(f"1000x720+0+{sh - 760}")
-        mgr.window.attributes("-topmost", False)
+        window = getattr(mgr, "window", None)
+        if window is not None:
+            sh = window.winfo_screenheight()
+            window.wm_geometry(f"1000x720+0+{sh - 760}")
+            window.attributes("-topmost", False)
     except Exception:
         pass
 
@@ -238,11 +240,14 @@ def main():
     # ── FuncAnimation ─────────────────────────────────────────
     def update(frame):
         nonlocal _game_ended, _closing, _close_at, calibrated
+        current_event = {}
         if not _game_ended:
             try:
                 with open(EVENTS_FILE) as _f:
-                    _ev = json.load(_f)
-                if _ev.get("game_end") and not _ev.get("_report_done"):
+                    current_event = json.load(_f)
+                if current_event.get("game_end") and not current_event.get(
+                    "_report_done"
+                ):
                     _game_ended = True
                     _close_at = time.perf_counter() + 1.0
             except Exception:
@@ -410,9 +415,10 @@ def main():
         ax_keys.set_ylim(-0.5, 3.5)
         ax_keys.set_xlim(x_min, t_now + 0.3)
         try:
-            with open(EVENTS_FILE) as _f:
-                _ev = json.load(_f)
-            for k in _ev.get("keys", []):
+            if current_event is None:
+                with open(EVENTS_FILE) as _f:
+                    current_event = json.load(_f)
+            for k in current_event.get("keys", []):
                 ts_k = k["ts"]
                 if ts_k >= x_min:
                     y = DIR_Y.get(k["direction"], 2)
@@ -426,7 +432,7 @@ def main():
                         zorder=5,
                         linewidths=2,
                     )
-            for lv in _ev.get("levels", []):
+            for lv in current_event.get("levels", []):
                 lts = lv["ts"]
                 if lts >= x_min:
                     ax_keys.axvline(x=lts, color="#014F84", alpha=0.4, lw=1)
@@ -569,7 +575,6 @@ def _enrich_levels(all_ts, fc_ts, fc_v, rr_ts, rr_v, ppg):
                 lv["rr_rpm"] = mean_in_window(rr_ts, rr_v, t0, t1)
                 # PWA depuis ppg brut
                 if all_ts:
-                    pwa_vals = [ppg.pwa_raw] if ppg.pwa_raw else []
                     # approximation : dernier pwa_raw connu
                     lv["ppg_amplitude"] = ppg.pwa_raw
 

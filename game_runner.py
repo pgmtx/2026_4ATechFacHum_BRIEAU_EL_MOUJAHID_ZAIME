@@ -1,5 +1,5 @@
 """
-game_only.py — Jeu pygame pur avec suivi des evenements.
+game_runner.py — Jeu pygame pur avec suivi des evenements.
 Patch via _start_next_round (plus fiable que __init__).
 """
 
@@ -8,6 +8,7 @@ import logging
 import os
 import sys
 import time
+from typing import Any, cast
 
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
 
@@ -84,7 +85,7 @@ def patch_game(game):
             d["calib_end"] = ts()
             save_ev(d)
 
-    CalibrationState.update = new_calib
+    CalibrationState.update = cast(Any, new_calib)
 
     # ── NORMAL : patcher _start_next_round ───────────────────
     # C'est appelé à chaque nouveau niveau (arrows_count += 1)
@@ -127,8 +128,8 @@ def patch_game(game):
                 last_level["success"] = False
             save_ev(d)
 
-    SingleArrowState._start_next_round = new_sa_next
-    SingleArrowState.handle_player_inputs = new_sa_handle
+    SingleArrowState._start_next_round = cast(Any, new_sa_next)
+    SingleArrowState.handle_player_inputs = cast(Any, new_sa_handle)
 
     # Détecter quand SingleArrowState devient actif (premier niveau = 1)
     # en patchant update pour enregistrer le niveau 1
@@ -148,7 +149,7 @@ def patch_game(game):
             save_ev(d)
         orig_sa_update(self)
 
-    SingleArrowState.update = new_sa_update
+    SingleArrowState.update = cast(Any, new_sa_update)
 
     # ── Transition Normal → Chunking ──────────────────────────
     orig_prepair = PrePairState.__init__
@@ -161,7 +162,7 @@ def patch_game(game):
         d["transition_ts"] = ts()
         save_ev(d)
 
-    PrePairState.__init__ = new_prepair  # pyright: ignore[reportAttributeAccessIssue]
+    PrePairState.__init__ = cast(Any, new_prepair)
 
     # ── CHUNKING : patcher _start_next_round ─────────────────
     orig_pa_next = PairArrowState._start_next_round
@@ -201,8 +202,8 @@ def patch_game(game):
         )
         save_ev(d)
 
-    PairArrowState.update = new_pa_update
-    PairArrowState._start_next_round = new_pa_next
+    PairArrowState.update = cast(Any, new_pa_update)
+    PairArrowState._start_next_round = cast(Any, new_pa_next)
 
     # ── Summary ───────────────────────────────────────────────
     orig_sum_init = SummaryState.__init__
@@ -335,9 +336,9 @@ def patch_game(game):
                 if _surf and isinstance(_surf, list):
                     _fig_idx = (_fig_idx - 1) % len(_surf)
 
-    SummaryState.__init__ = new_sum_init  # pyright: ignore[reportAttributeAccessIssue]
-    SummaryState.draw = new_sum_draw
-    SummaryState.handle_events = new_sum_handle
+    SummaryState.__init__ = cast(Any, new_sum_init)
+    SummaryState.draw = cast(Any, new_sum_draw)
+    SummaryState.handle_events = cast(Any, new_sum_handle)
 
 
 if __name__ == "__main__":
