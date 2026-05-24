@@ -4,6 +4,7 @@ analysis.py - Comparaison Normal vs Chunking - figures individuelles
 
 import glob
 import json
+import logging
 import os
 import sys
 import time
@@ -32,7 +33,7 @@ def load_data():
     if files:
         with open(files[0]) as f:
             return json.load(f)
-    print("Aucune session trouvee")
+    logging.error("Aucune session trouvée")
     sys.exit(1)
 
 
@@ -128,7 +129,7 @@ def save_figures(data, prefix):
         fig.savefig(p, dpi=150, bbox_inches="tight", facecolor="white")
         plt.close(fig)
         paths.append(p)
-        print(f"[analysis] {p}")
+        logging.info(f"[analysis] {p}")
 
     # Figure 1 : FC
     fig, ax = plt.subplots(figsize=(8, 5))
@@ -266,7 +267,7 @@ def main():
         index_file = "sessions/figures_index.json"
         with open(index_file, "w") as f:
             json.dump({"figures": paths, "ts": time.strftime("%Y%m%d_%H%M%S")}, f)
-        print(f"[analysis] Index: {index_file}")
+        logging.info(f"[analysis] Index: {index_file}")
     except Exception:
         pass
 

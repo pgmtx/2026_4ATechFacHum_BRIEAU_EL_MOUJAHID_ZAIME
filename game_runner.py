@@ -4,6 +4,7 @@ Patch via _start_next_round (plus fiable que __init__).
 """
 
 import json
+import logging
 import os
 import sys
 import time
@@ -219,7 +220,7 @@ def patch_game(game):
         d["max_level_normal"] = max_n
         d["max_level_chunking"] = max_c
         save_ev(d)
-        print(
+        logging.info(
             f"[game] Fin — Normal niveaux:{len(d['levels_normal'])}  Chunking niveaux:{len(d['levels_chunking'])}"
         )
 
@@ -270,7 +271,7 @@ def patch_game(game):
                 nh = int(s.get_height() * ratio)
                 surfs.append(pygame.transform.smoothscale(s, (nw, nh)))
             except Exception as e:
-                print(f"[game] Erreur chargement {fp}: {e}")
+                logging.exception(f"[game] Erreur chargement {fp}: {e}")
 
         # Allows new_sum_init to assign to patch_game()'s _surf and _fig_idx (shares state across closures)
         nonlocal _surf, _fig_idx
@@ -278,7 +279,7 @@ def patch_game(game):
         if surfs:
             _surf = surfs
             _fig_idx = 0
-            print(f"[game] {len(surfs)} figures chargees")
+            logging.info(f"[game] {len(surfs)} figures chargees")
         else:
             _surf = None
 

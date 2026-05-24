@@ -30,11 +30,11 @@ try:
     import plux
 
     _ = plux.SignalsDev
-    print("[plux] chargé")
+    logging.info("[plux] chargé")
 except (ImportError, AttributeError):
     pv = platform.python_version().split(".")
     suf = platform.architecture()[0][:2] + "_" + pv[0] + pv[1]
-    print(f"[ERREUR] plux introuvable — téléchargez Win{suf}")
+    logging.exception(f"[ERREUR] plux introuvable — téléchargez Win{suf}")
     sys.exit(1)
 
 EVENTS_FILE = "sessions/live_events.json"
@@ -62,7 +62,7 @@ class ChunkyDevice(plux.SignalsDev):
             pass
         now = time.perf_counter()
         if now - self._last >= 2.0:
-            print(f"  [BITalino] {nSeq} ppg={s['ppg']} pzt={s['pzt']}")
+            logging.debug(f"  [BITalino] {nSeq} ppg={s['ppg']} pzt={s['pzt']}")
             self._last = now
         return self.stop_event.is_set() or (nSeq > self.duration * self.frequency)
 
@@ -76,7 +76,7 @@ class AcqThread(threading.Thread):
 
     def run(self):
         try:
-            print(f"[acq] Connexion {config.MAC_ADDRESS}...")
+            logging.info(f"[acq] Connexion {config.MAC_ADDRESS}...")
             self.device = ChunkyDevice(config.MAC_ADDRESS)
             self.device.data_queue = self.q
             self.device.stop_event = self.stop_event
@@ -85,10 +85,10 @@ class AcqThread(threading.Thread):
             self.device.start(
                 config.SAMPLING_RATE, config.ACTIVE_PORTS, config.RESOLUTION
             )
-            print("[acq] Démarré")
+            logging.info("[acq] Démarré")
             self.device.loop()
         except Exception as e:
-            print(f"[acq] ERREUR : {e}")
+            logging.exception(f"[acq] ERREUR : {e}")
         finally:
             if self.device:
                 try:
@@ -132,17 +132,17 @@ def main():
     acq = AcqThread(data_q)
     acq.start()
 
-    print("Attente BITalino (5s)...")
+    logging.info("Attente BITalino (5s)...")
     deadline = time.perf_counter() + 5
     while data_q.empty() and time.perf_counter() < deadline:
         time.sleep(0.1)
     if data_q.empty():
-        print("ERREUR : aucune donnée BITalino")
+        logging.error("ERREUR : aucune donnée BITalino")
         sys.exit(1)
-    print("BITalino connecté !")
+    logging.info("BITalino connecté !")
 
     # ── Attendre que le joueur clique Jouer ───────────────────
-    print("En attente du démarrage du jeu (cliquez Jouer)...")
+    logging.info("En attente du démarrage du jeu (cliquez Jouer)...")
     while True:
         try:
             with open(EVENTS_FILE) as f:
@@ -166,7 +166,7 @@ def main():
             data_q.get_nowait()
         except queue.Empty:
             break
-    print("Calibration démarrée !")
+    logging.info("Calibration démarrée !")
 
     # ── Processeurs signal ────────────────────────────────────
     ppg = PPGProcessor()
@@ -317,7 +317,7 @@ def main():
                     if calib_vals["rr"]:
                         cog.set_baseline("rr", calib_vals["rr"])
                     cog.set_baseline("rt", [400, 450, 500, 550, 600])
-                    print("[Calibration] Terminée !")
+                    logging.info("[Calibration] Terminée !")
 
                 ppg.update(s["ppg"], s["ts"])
                 pzt.update(s["pzt"], s["ts"])
@@ -499,7 +499,9 @@ def main():
     plt.show(block=True)
 
     acq.stop()
-    print(f"\nSession : {len(all_ppg)} échantillons  FC={ppg.fc_bpm}  RR={pzt.rr_rpm}")
+    logging.info(
+        f"\nSession : {len(all_ppg)} échantillons  FC={ppg.fc_bpm}  RR={pzt.rr_rpm}"
+    )
 
     # Sauvegarder les données complètes de la session pour analysis.py
     try:
@@ -529,12 +531,12 @@ def main():
         os.makedirs("sessions", exist_ok=True)
         with open(fname_session, "w") as f:
             json.dump(session_data, f)
-        print(f"[session] Sauvegardée : {fname_session}")
-        print(
+        logging.info(f"[session] Sauvegardée : {fname_session}")
+        logging.info(
             "[session] Lancez 'python analysis.py' pour la comparaison Normal vs Chunking"
         )
     except Exception as e:
-        print(f"[session] Erreur sauvegarde : {e}")
+        logging.exception(f"[session] Erreur sauvegarde : {e}")
 
 
 def _enrich_levels(all_ts, fc_ts, fc_v, rr_ts, rr_v, ppg):
@@ -573,9 +575,9 @@ def _enrich_levels(all_ts, fc_ts, fc_v, rr_ts, rr_v, ppg):
 
         with open(EVENTS_FILE, "w") as f:
             json.dump(ev, f)
-        print("[physio] Niveaux enrichis avec FC/RR")
+        logging.info("[physio] Niveaux enrichis avec FC/RR")
     except Exception as e:
-        print(f"[physio] Erreur enrichissement : {e}")
+        logging.exception(f"[physio] Erreur enrichissement : {e}")
 
 
 def _show_final_in_fig(
@@ -806,7 +808,7 @@ def _show_final_in_fig(
     ax7.legend(fontsize=8, loc="upper left")
 
     fig.canvas.draw_idle()
-    print("[rapport] Rapport final affiché dans la fenêtre matplotlib")
+    logging.info("[rapport] Rapport final affiché dans la fenêtre matplotlib")
 
 
 if __name__ == "__main__":

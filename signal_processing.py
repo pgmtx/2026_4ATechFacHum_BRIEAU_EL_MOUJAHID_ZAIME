@@ -40,6 +40,7 @@ Comment tester ce fichier seul :
 ==============================================================
 """
 
+import logging
 import time
 from collections import deque
 
@@ -184,7 +185,7 @@ class PPGProcessor:
         A appeler apres la phase de calibration.
         """
         self._pwa_baseline = pwa_baseline
-        print(f"[PPG] Baseline PWA : {pwa_baseline:.1f}")
+        logging.info(f"[PPG] Baseline PWA : {pwa_baseline:.1f}")
 
     def get_filtered_signal(self) -> np.ndarray:
         """Retourne le signal PPG filtre pour affichage temps reel."""
@@ -274,7 +275,7 @@ class PZTProcessor:
 
         if self.apnea_detected and not was_apnea:
             self.apnea_history.append((timestamp, True))
-            print(f"[PZT] Apnee cognitive detectee (pause {elapsed:.1f}s)")
+            logging.info(f"[PZT] Apnée cognitive detectée (pause {elapsed:.1f}s)")
 
     def _compute_rr(self):
         """Calcul interne du rythme respiratoire."""
@@ -469,7 +470,9 @@ class CognitiveLoadIndex:
         values : liste des valeurs mesurees pendant la phase de repos
         """
         if len(values) < 3:
-            print(f"[I_cog] Baseline {metric} : pas assez de valeurs ({len(values)})")
+            logging.warning(
+                f"[I_cog] Baseline {metric} : pas assez de valeurs ({len(values)})"
+            )
             return
         arr = np.array(values, dtype=float)
         mu = float(np.mean(arr))
@@ -478,7 +481,7 @@ class CognitiveLoadIndex:
             sigma = 0.01  # evite la division par zero
         self._baseline[metric]["mu"] = mu
         self._baseline[metric]["sigma"] = sigma
-        print(f"[I_cog] Baseline {metric} : mu={mu:.2f}  sigma={sigma:.2f}")
+        logging.info(f"[I_cog] Baseline {metric} : mu={mu:.2f}  sigma={sigma:.2f}")
 
     @property
     def is_calibrated(self) -> bool:
@@ -577,8 +580,8 @@ class CalibrationPhase:
     def start(self):
         """Demarre la phase de calibration."""
         self._start_time = time.perf_counter()
-        print(f"[Calibration] Debut -- {self.DURATION_SEC}s de repos")
-        print("[Calibration] Restez immobile et respirez normalement")
+        logging.info(f"[Calibration] Debut -- {self.DURATION_SEC}s de repos")
+        logging.info("[Calibration] Restez immobile et respirez normalement")
 
     def update(self, sample: dict):
         """
@@ -610,7 +613,7 @@ class CalibrationPhase:
         if self._done:
             return
         self._done = True
-        print("[Calibration] Calcul des baselines individuelles...")
+        logging.info("[Calibration] Calcul des baselines individuelles...")
 
         if self._pwa_vals:
             pwa_mean = float(np.mean(self._pwa_vals))
@@ -619,13 +622,13 @@ class CalibrationPhase:
 
         if self._fc_vals:
             self._cog.set_baseline("fc", self._fc_vals)
-            print(f"[Calibration] FC repos : {np.mean(self._fc_vals):.1f} bpm")
+            logging.info(f"[Calibration] FC repos : {np.mean(self._fc_vals):.1f} bpm")
 
         if self._rr_vals:
             self._cog.set_baseline("rr", self._rr_vals)
-            print(f"[Calibration] RR repos : {np.mean(self._rr_vals):.1f} rpm")
+            logging.info(f"[Calibration] RR repos : {np.mean(self._rr_vals):.1f} rpm")
 
-        print(
+        logging.info(
             "[Calibration] Terminee -- baseline RT calculee sur les 5 premieres reponses du jeu"
         )
 
@@ -638,18 +641,16 @@ if __name__ == "__main__":
     import matplotlib.gridspec as gridspec
     import matplotlib.pyplot as plt
 
-    print("=" * 55)
-    print("TEST TRAITEMENT SIGNAL -- ChunkyMemo")
-    print("=" * 55)
-    print()
+    logging.info("=" * 55)
+    logging.info("TEST TRAITEMENT SIGNAL -- ChunkyMemo")
+    logging.info("=" * 55 + "\n")
 
     config.validate()
-    print()
 
     DURATION = 60
     N = DURATION * config.SAMPLING_RATE
     t_arr = np.linspace(0, DURATION, N)
-    print(f"Generation de {DURATION}s de signaux synthetiques...")
+    logging.info(f"\nGénération de {DURATION}s de signaux synthétiques...")
 
     # PPG : onde de pouls a 72 bpm (1.2 Hz)
     ppg_signal = (
@@ -672,7 +673,7 @@ if __name__ == "__main__":
     # Baseline calculee depuis les 10 premieres secondes du signal synthetique
     # (equivalent a la CalibrationPhase en situation reelle)
     # On alimente d abord 10s de donnees, on recupere les valeurs, puis on calibre
-    print("Phase de calibration synthetique (10s)...")
+    logging.info("Phase de calibration synthétique (10s)...")
     ts_now = time.perf_counter()
     calib_samples = int(10 * config.SAMPLING_RATE)
     for i in range(calib_samples):
@@ -696,24 +697,23 @@ if __name__ == "__main__":
         cog_idx.set_baseline("rr", rr_calib)
     cog_idx.set_baseline("rt", rt_calib)
 
-    print(
+    logging.info(
         f"  FC baseline  : {np.mean(fc_calib):.1f} bpm"
         if fc_calib
-        else "  FC baseline : pas encore calculee"
+        else "  FC baseline : pas encore calculée"
     )
-    print(
+    logging.info(
         f"  PWA baseline : {np.mean(pwa_calib):.1f}"
         if pwa_calib
-        else "  PWA baseline : pas encore calculee"
+        else "  PWA baseline : pas encore calculée"
     )
-    print(
+    logging.info(
         f"  RR baseline  : {np.mean(rr_calib):.1f} rpm"
         if rr_calib
-        else "  RR baseline : pas encore calculee"
+        else "  RR baseline : pas encore calculée"
     )
-    print()
 
-    print("Traitement en cours...")
+    logging.info("\nTraitement en cours...")
     ts_now = time.perf_counter()
     fc_ts, fc_vals = [], []
     pwa_ts, pwa_vals = [], []
@@ -749,33 +749,32 @@ if __name__ == "__main__":
                 icog_ts.append(t_arr[i])
                 icog_v.append(ic)
 
-    print(
+    logging.info(
         f"FC finale  : {ppg_proc.fc_bpm:.1f} bpm"
         if ppg_proc.fc_bpm
         else "FC : non calculee"
     )
-    print(
+    logging.info(
         f"PWA finale : {ppg_proc.pwa_raw:.1f}"
         if ppg_proc.pwa_raw
         else "PWA : non calculee"
     )
-    print(
+    logging.info(
         f"RR final   : {pzt_proc.rr_rpm:.1f} rpm"
         if pzt_proc.rr_rpm
         else "RR : non calcule"
     )
-    print(
+    logging.info(
         f"RT moyen   : {kb_proc.rt_mean_ms:.1f} ms"
         if kb_proc.rt_mean_ms
         else "RT : non calcule"
     )
-    print(
+    logging.info(
         f"I_cog      : {cog_idx.i_cog:.3f}"
         if cog_idx.i_cog is not None
         else "I_cog : non calcule"
     )
-    print(f"Surcharge  : {cog_idx.overload}")
-    print()
+    logging.info(f"Surcharge  : {cog_idx.overload}\n")
 
     fig = plt.figure(figsize=(14, 10))
     gs = gridspec.GridSpec(3, 2, figure=fig, hspace=0.45, wspace=0.3)
@@ -860,7 +859,8 @@ if __name__ == "__main__":
     ax6.legend(fontsize=8)
     ax6.grid(True, alpha=0.3)
 
-    plt.savefig("validation_signal_processing.png", dpi=120, bbox_inches="tight")
-    print("Graphique sauvegarde : validation_signal_processing.png")
+    output_filename = "validation_signal_processing.png"
+    plt.savefig(output_filename, dpi=120, bbox_inches="tight")
+    logging.info(f"Graphique sauvegardé : {output_filename}")
     plt.show()
-    print("Test termine.")
+    logging.info("Test terminé.")

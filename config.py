@@ -7,6 +7,7 @@ Tous les autres fichiers importent depuis ici.
 ==============================================================
 """
 
+import logging
 import os
 import platform
 import sys
@@ -115,43 +116,45 @@ def validate():
     ok = True
 
     if len(ACTIVE_PORTS) < 2:
-        print("[CONFIG ERROR] Il faut au moins 2 ports actifs (PPG + PZT)")
+        logging.error("[CONFIG ERROR] Il faut au moins 2 ports actifs (PPG + PZT)")
         ok = False
 
     max_idx = max(IDX_PPG, IDX_PZT)
     if max_idx >= len(ACTIVE_PORTS):
-        print("[CONFIG ERROR] IDX_PPG ou IDX_PZT depasse le nombre de ports actifs")
-        print(
+        logging.error(
+            "[CONFIG ERROR] IDX_PPG ou IDX_PZT depasse le nombre de ports actifs"
+        )
+        logging.error(
             f"              IDX_PPG={IDX_PPG}  IDX_PZT={IDX_PZT}  nb_ports={len(ACTIVE_PORTS)}"
         )
         ok = False
 
     if PPG_LOW_HZ >= PPG_HIGH_HZ:
-        print("[CONFIG ERROR] PPG_LOW_HZ doit etre < PPG_HIGH_HZ")
+        logging.error("[CONFIG ERROR] PPG_LOW_HZ doit etre < PPG_HIGH_HZ")
         ok = False
 
     if PZT_LOW_HZ >= PZT_HIGH_HZ:
-        print("[CONFIG ERROR] PZT_LOW_HZ doit etre < PZT_HIGH_HZ")
+        logging.error("[CONFIG ERROR] PZT_LOW_HZ doit etre < PZT_HIGH_HZ")
         ok = False
 
     if ok:
-        print("[CONFIG] ✓ Configuration valide")
-        print(f"[CONFIG]   MAC        : {MAC_ADDRESS}")
-        print(f"[CONFIG]   Ports      : {ACTIVE_PORTS}")
-        print(
+        logging.info("[CONFIG] ✓ Configuration valide")
+        logging.info(f"[CONFIG]   MAC        : {MAC_ADDRESS}")
+        logging.info(f"[CONFIG]   Ports      : {ACTIVE_PORTS}")
+        logging.info(
             f"[CONFIG]   IDX_PPG    : {IDX_PPG}  (data[{IDX_PPG}] = port {ACTIVE_PORTS[IDX_PPG]})"
         )
-        print(
+        logging.info(
             f"[CONFIG]   IDX_PZT    : {IDX_PZT}  (data[{IDX_PZT}] = port {ACTIVE_PORTS[IDX_PZT]})"
         )
-        print(f"[CONFIG]   Frequence  : {SAMPLING_RATE} Hz")
+        logging.info(f"[CONFIG]   Frequence  : {SAMPLING_RATE} Hz")
     return ok
 
 
 if __name__ == "__main__":
-    print("=== Test configuration ChunkyMemo ===")
+    logging.info("=== Test configuration ChunkyMemo ===")
     result = validate()
     if result:
-        print("\nTout est bon — vous pouvez lancer acquisition.py")
+        logging.info("\nTout est bon — vous pouvez lancer acquisition.py")
     else:
-        print("\nCorrigez les erreurs ci-dessus avant de continuer")
+        logging.error("\nCorrigez les erreurs ci-dessus avant de continuer")

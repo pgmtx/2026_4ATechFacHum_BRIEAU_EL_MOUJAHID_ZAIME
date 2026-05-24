@@ -16,6 +16,7 @@ Comment tester :
 ==============================================================
 """
 
+import logging
 import os
 import platform
 import queue
@@ -45,10 +46,10 @@ try:
     import plux
 
     _ = plux.SignalsDev
-    print("[acquisition] plux charge avec succes")
+    logging.info("[acquisition] plux charge avec succès")
 except (ImportError, AttributeError):
-    print("[acquisition] ERREUR : plux.pyd introuvable")
-    print(f"  Verifiez que plux.pyd est dans : {SCRIPT_DIR}")
+    logging.exception("[acquisition] ERREUR : plux.pyd introuvable")
+    logging.error(f"  Verifiez que plux.pyd est dans : {SCRIPT_DIR}")
     pv = platform.python_version().split(".")
     suffix = platform.architecture()[0][:2] + "_" + pv[0] + pv[1]
     os_name = platform.system()
@@ -58,7 +59,7 @@ except (ImportError, AttributeError):
         path = f"MacOS/Intel{pv[0]}{pv[1]}"
     else:
         path = "Linux64"
-    print(
+    logging.error(
         f"  https://github.com/pluxbiosignals/python-samples/tree/master/PLUX-API-Python3/{path}"
     )
     sys.exit(1)
@@ -118,7 +119,7 @@ class ChunkyDevice(plux.SignalsDev):
         # Debug : 1 ligne par seconde dans la console
         now = time.perf_counter()
         if now - self._last_print >= 1.0:
-            print(
+            logging.debug(
                 f"[BITalino] nSeq={nSeq:6d} | "
                 f"ppg={sample['ppg']:5d} | "
                 f"pzt={sample['pzt']:5d}"
@@ -155,7 +156,7 @@ class AcquisitionThread(threading.Thread):
     def run(self):
         """Acquisition reelle uniquement — pas de simulation."""
         try:
-            print(f"[acquisition] Connexion a {config.MAC_ADDRESS} ...")
+            logging.info(f"[acquisition] Connexion à {config.MAC_ADDRESS} ...")
             # On assigne data_queue et stop_event comme attributs
             self.device = ChunkyDevice(config.MAC_ADDRESS)
             self.device.data_queue = self.data_queue
@@ -166,32 +167,38 @@ class AcquisitionThread(threading.Thread):
             self.device.start(
                 config.SAMPLING_RATE, config.ACTIVE_PORTS, config.RESOLUTION
             )
-            print(
-                f"[acquisition] Demarre — "
+            logging.info(
+                f"[acquisition] Démarrage — "
                 f"ports={config.ACTIVE_PORTS} @ {config.SAMPLING_RATE}Hz"
             )
 
             # device.loop() bloque jusqu a ce que onRawFrame retourne True
             self.device.loop()
 
-        except Exception as e:
-            print(f"[acquisition] ERREUR connexion BITalino : {e}")
-            print("[acquisition] Verifiez :")
-            print("  1. BITalino allume et bluetooth actif")
-            print(f"  2. Adresse MAC correcte dans config.py : {config.MAC_ADDRESS}")
-            print(f"  3. Ports correctement branches : {config.ACTIVE_PORTS}")
+        except Exception:
+            logging.exception("[acquisition] ERREUR connexion BITalino")
+            logging.error("[acquisition] Vérifiez les éléments suivants :")
+            logging.error(
+                "  1. Le capteur BITalino est-il allumé ? Le bluetooth est-il actif ?"
+            )
+            logging.error(
+                f"  2. L'adresse MAC dans config.py est-elle correcte ? ({config.MAC_ADDRESS})"
+            )
+            logging.error(
+                f"  3. Les ports sont-ils correctement branchés ? ({config.ACTIVE_PORTS})"
+            )
         finally:
             if self.device:
                 try:
                     self.device.stop()
                     self.device.close()
-                    print("[acquisition] Connexion fermee proprement")
+                    logging.info("[acquisition] Connexion fermée proprement")
                 except Exception:
                     pass
 
     def stop(self):
         """Arret propre — signal a onRawFrame de retourner True."""
-        print("[acquisition] Arret demande...")
+        logging.info("[acquisition] Arrêt demandé...")
         self.stop_event.set()
 
 
@@ -203,22 +210,20 @@ if __name__ == "__main__":
     import matplotlib.patches as mpatches
     import matplotlib.pyplot as plt
 
-    print("=" * 50)
-    print("TEST ACQUISITION REELLE — ChunkyMemo")
-    print("=" * 50)
-    print()
+    logging.info("=" * 50)
+    logging.info("TEST ACQUISITION RÉELLE — ChunkyMemo")
+    logging.info("=" * 50 + "\n\n")
 
     if not config.validate():
         sys.exit(1)
 
-    print()
-    print(f"  - PPG branche sur port {config.ACTIVE_PORTS[config.IDX_PPG]}")
-    print(f"  - PZT branche sur port {config.ACTIVE_PORTS[config.IDX_PZT]}")
-    print()
-    print("Pendant le test : tapez Z/S/Q/D + Entree pour marquer des fleches")
-    print()
-    input("Appuyez sur Entree pour demarrer...")
-    print()
+    logging.info(f"  - PPG branche sur port {config.ACTIVE_PORTS[config.IDX_PPG]}")
+    logging.info(f"  - PZT branche sur port {config.ACTIVE_PORTS[config.IDX_PZT]}\n")
+    logging.info(
+        "Pendant le test : tapez Z/S/Q/D + [entrée] pour marquer des flèches\n"
+    )
+    input("Appuyez sur [entrée] pour commencer...")
+    logging.info("")
 
     TEST_DURATION = 30
     WINDOW_SHOW = 10.0
@@ -285,7 +290,7 @@ if __name__ == "__main__":
         if d:
             with key_events_lock:
                 key_events.append((ts, d))
-            print(f"  -> {ARROW_LABEL[d]} a t={ts:.2f}s")
+            logging.info(f"  -> {ARROW_LABEL[d]} a t={ts:.2f}s")
 
     # Demarrer acquisition
     data_q = queue.Queue(maxsize=config.QUEUE_MAXSIZE)
@@ -321,8 +326,8 @@ if __name__ == "__main__":
     # mpl_connect capte les touches dans la fenetre matplotlib sans bloquer
     fig.canvas.mpl_connect("key_press_event", on_key_press)
 
-    print(f"Acquisition en cours ({TEST_DURATION}s)...")
-    print("Cliquez sur la fenetre et tapez Z/S/Q/D pour marquer des fleches")
+    logging.info(f"Acquisition en cours ({TEST_DURATION}s)...")
+    logging.info("Cliquez sur la fenêtre et tapez Z/S/Q/D pour marquer des fleches")
 
     # FuncAnimation — rafraichit le graphique a interval regulier
     # sans jamais bloquer la fenetre ni la boucle d'evenements
@@ -417,15 +422,16 @@ if __name__ == "__main__":
         captured_keys = list(key_events)
 
     if not all_ppg:
-        print("AUCUNE donnee recue — verifiez la connexion BITalino")
+        logging.error(
+            "AUCUNE donnée recue — vérifiez la connexion avec le capteur BITalino"
+        )
         sys.exit(1)
 
-    print()
-    print(f"Collecte      : {len(all_ppg)} echantillons")
-    print(f"Freq. effect. : {len(all_ppg) / TEST_DURATION:.1f} Hz")
-    print(f"Fleches tapees: {len(captured_keys)}")
-    print(f"PPG amplitude : {max(all_ppg) - min(all_ppg)}")
-    print(f"PZT amplitude : {max(all_pzt) - min(all_pzt)}")
+    logging.info(f"\nCollecte      : {len(all_ppg)} echantillons")
+    logging.info(f"Freq. effect. : {len(all_ppg) / TEST_DURATION:.1f} Hz")
+    logging.info(f"Fleches tapees: {len(captured_keys)}")
+    logging.info(f"PPG amplitude : {max(all_ppg) - min(all_ppg)}")
+    logging.info(f"PZT amplitude : {max(all_pzt) - min(all_pzt)}")
 
     # Graphique final — session complete
     fig2, (ax2_ppg, ax2_pzt, ax2_keys) = plt.subplots(
@@ -479,4 +485,4 @@ if __name__ == "__main__":
 
     plt.tight_layout()
     plt.show()
-    print("Fermez la fenetre pour quitter.")
+    logging.info("Fermez la fenêtre pour quitter.")
