@@ -2,41 +2,39 @@
 ==============================================================
 ChunkyMemo — signal_processing.py
 ==============================================================
-Traitement des signaux physiologiques en temps reel.
-Entierement base sur le document de conception ChunkyMemo.
+Real-time processing of physiological signals.
 
-Signaux traites :
-  PPG  -> Frequence cardiaque (FC) + Amplitude onde de pouls (PWA)
-  PZT  -> Rythme respiratoire (RR) + Detection d apnee cognitive
-  Clavier -> Temps de reaction (RT) + Taux d erreur
+Processed signals :
+  PPG  -> Heart rate (FC) + Pulse wave amplitude (PWA)
+  PZT  -> Respiratory rate (RR) + Detection of cognitive apnea
+  Keyboard -> Response time (RT) + Error rate
 
-Indice composite I_cog = (z_FC + z_PWA_inv + z_RR + z_RT) / 4
+Composite index I_cog = (z_FC + z_PWA_inv + z_RR + z_RT) / 4
 
-References scientifiques :
+Scientific references :
   [1] Elgendi (2012) "On the Analysis of Fingertip PPG Signals"
       Current Cardiology Reviews
-      Pipeline standard PPG -> FC, filtre [0.5-4 Hz], detection de pics.
+      Standard PPG -> FC pipeline, filter [0.5-4 Hz], peak detection.
       PMC : https://pmc.ncbi.nlm.nih.gov/articles/PMC3394104/
 
   [2] Pavlov et al. (2023) "Task-evoked pulse wave amplitude tracks cognitive load"
       Scientific Reports - DOI 10.1038/s41598-023-48917-5
-      PWA diminue significativement avec la charge memorielle (digit span).
+      PWA decreases significantly with digit span.
       PMC : https://pmc.ncbi.nlm.nih.gov/articles/PMC10730617/
 
   [3] Charlton et al. (2018) "Breathing Rate Estimation from ECG and PPG"
       IEEE Reviews in Biomedical Engineering
-      Filtre [0.1-0.8 Hz] standard pour extraction du rythme respiratoire.
+      Standard filter [0.1-0.8 Hz] for measuring respiratory rate.
       PMC : https://pmc.ncbi.nlm.nih.gov/articles/PMC7612521/
 
   [4] Grassmann et al. (2016) "Respiratory Changes in Response to Cognitive Load"
       Neural Plasticity - DOI 10.1155/2016/8146809
-      Episodes cognitifs exigeants -> respiration plus rapide.
+      Cognitively demanding tasks -> faster breathing.
       PMC : https://pmc.ncbi.nlm.nih.gov/articles/PMC4923594/
 
-Comment tester ce fichier seul :
+How to test this file on its own :
   python signal_processing.py
-  -> genere des signaux synthetiques, calcule toutes les metriques,
-     affiche les graphiques de validation
+  -> generates synthetic signals, calculates all metrics, displays validation graphs
 ==============================================================
 """
 
@@ -50,51 +48,49 @@ from scipy import signal as sp_signal
 import config
 
 # ==============================================================
-# PPGProcessor -- FC et PWA depuis le signal PPG
+# PPGProcessor -- HR and PWA from the PPG signal
 # ==============================================================
 
 
 class PPGProcessor:
     """
-    Extrait deux metriques depuis le signal PPG brut :
-      - FC  : frequence cardiaque en bpm
-      - PWA : amplitude de l onde de pouls (normalisee par baseline)
+    Extract two metrics from the raw PPG signal:
+      - FC:  heart rate in bpm
+      - PWA: pulse wave amplitude (normalized to baseline)
 
-    Pipeline [ref 1] :
-      1. Buffer glissant de PPG_WINDOW_SEC secondes
-      2. Filtre Butterworth passe-bande [0.7-4.0 Hz]
-         -> 0.7 Hz = 42 bpm minimum (repos)
-         -> 4.0 Hz = 240 bpm maximum (effort intense)
-      3. Detection de pics sur le signal filtre
-      4. FC  = 60 / IBI_moyen  (IBI = inter-beat interval, en secondes)
-      5. PWA = valeur_pic - valeur_creux_precedent
+    Pipeline [ref 1]:
+      1. PPG_WINDOW_SEC-second sliding buffer
+      2. Butterworth bandpass filter [0.7-4.0 Hz]
+         -> 0.7 Hz = 42 bpm minimum (idle)
+         -> 4.0 Hz = 240 bpm maximum (intense effort)
+      3. Detection of peaks in the filtered signal
+      4. FC  = 60 / IBI_moyen  (IBI = inter-beat interval, in seconds)
+      5. PWA = highest_value - previous_lowest_value
 
-    PWA et charge cognitive [ref 2] :
-      La PWA diminue sous charge cognitive car le systeme nerveux
-      sympathique provoque une vasoconstriction peripherique.
-      Le sang arrive moins fort au bout du doigt -> pic PPG plus petit.
+    PWAs and cognitive load [ref 2] :
+      PWA decreases under cognitive load because the sympathetic nervous system causes peripheral vasoconstriction.
+      Blood flow to the fingertips is reduced -> smaller PPG peak.
     """
 
     def __init__(self):
-        # Buffer circulaire : conserve les PPG_WINDOW_SEC dernieres secondes
+        # RingBuffer: stores PPG_WINDOW_SEC last seconds
         maxlen = int(config.PPG_WINDOW_SEC * config.SAMPLING_RATE)
         self._buf = deque(maxlen=maxlen)
         self._ts_buf = deque(maxlen=maxlen)
 
-        # Resultats calcules -- None = pas encore assez de donnees
-        self.fc_bpm = None  # frequence cardiaque (bpm)
-        self.pwa_raw = None  # amplitude brute pic-creux
-        self.pwa_norm = None  # amplitude normalisee (/ baseline)
-        self.last_peaks = []  # indices des derniers pics detectes
+        # Calculated results -- None = not enough data yet
+        self.fc_bpm = None  # heart rate (bpm)
+        self.pwa_raw = None  # peak-to-trough amplitude
+        self.pwa_norm = None  # normalized amplitude (relative to baseline)
+        self.last_peaks = []  # Indices of the most recent peaks detected
 
-        # Baseline individuelle (calculee pendant la calibration)
+        # Individual baseline (calculated during calibration)
         self._pwa_baseline = None
 
-        # Historique (timestamp, valeur)
         self.fc_history = []
         self.pwa_history = []
 
-        # Filtre Butterworth passe-bande [ref 1]
+        # Butterworth bandpass filter [ref 1]
         nyq = config.SAMPLING_RATE / 2
         low = config.PPG_LOW_HZ / nyq
         high = config.PPG_HIGH_HZ / nyq
@@ -106,32 +102,32 @@ class PPGProcessor:
 
     def update(self, ppg_value: int, timestamp: float):
         """
-        Ajoute un echantillon PPG brut et recalcule FC + PWA.
-        Appele a chaque frame BITalino (100 Hz).
+        Adds a raw PPG sample and recalculates FC + PWA..
+        Calls BITalino every frame (100 Hz).
         """
         self._buf.append(ppg_value)
         self._ts_buf.append(timestamp)
         self._sample_count += 1
 
-        # Recalcul toutes les 50 frames = toutes les 0.5 secondes
+        # Recalculate every 50 frames = every 0.5 seconds
         if self._sample_count % 50 == 0:
             self._compute()
 
     def _compute(self):
-        """Calcul interne FC + PWA sur le buffer courant."""
+        """Internal calculation of FC + PWA based on the current buffer."""
         if len(self._buf) < int(3 * config.SAMPLING_RATE):
             return
 
         arr = np.array(self._buf, dtype=float)
 
-        # Filtre zero-phase [ref 1] -- pas de decalage temporel
+        # Zero-phase filter [ref 1] -- no time delay
         try:
             filtered = sp_signal.filtfilt(self._b, self._a, arr)
         except Exception:
             return
 
-        # Detection de pics
-        # distance min = 0.4s = 150 bpm max (limite physiologique)
+        # Peaks detection
+        # min distance = 0.4 s = 150 bpm max (physiological limit)
         min_dist = int(0.4 * config.SAMPLING_RATE)
         height_thr = 0.3 * (filtered.max() - filtered.min())
         if height_thr < 1:
@@ -145,12 +141,12 @@ class PPGProcessor:
         if len(peaks) < 2:
             return
 
-        # FC = 60 / IBI_moyen sur les 5 derniers battements [doc conception]
+        # HR = 60 / average IBI over the last 5 beats
         recent_peaks = peaks[-6:]
         ibis_samples = np.diff(recent_peaks)
         ibis_sec = ibis_samples / config.SAMPLING_RATE
 
-        # Filtrer les IBI hors plage physiologique (40-180 bpm)
+        # Filter out HRs outside the physiological range (40–180 bpm)
         valid_ibis = ibis_sec[(ibis_sec > 0.33) & (ibis_sec < 1.5)]
         if len(valid_ibis) == 0:
             return
@@ -162,13 +158,13 @@ class PPGProcessor:
             self.fc_bpm = None
             return
 
-        # PWA = valeur_pic - valeur_creux_precedent [ref 2]
+        # PWA = peak_value - previous_trough_value [ref 2]
         last_peak_idx = peaks[-1]
         search_start = max(0, last_peak_idx - int(config.SAMPLING_RATE))
         trough_idx = np.argmin(filtered[search_start:last_peak_idx]) + search_start
         self.pwa_raw = float(filtered[last_peak_idx] - filtered[trough_idx])
 
-        # Normalisation par baseline individuelle
+        # Normalization using individual baselines
         if self._pwa_baseline is not None and self._pwa_baseline > 0:
             self.pwa_norm = self.pwa_raw / self._pwa_baseline
 
@@ -181,14 +177,14 @@ class PPGProcessor:
 
     def set_baseline(self, pwa_baseline: float):
         """
-        Definit la baseline PWA individuelle mesuree au repos.
-        A appeler apres la phase de calibration.
+        Defines the individual PWA baseline measured at rest.
+        Call this after the calibration phase
         """
         self._pwa_baseline = pwa_baseline
         logging.info(f"[PPG] Baseline PWA : {pwa_baseline:.1f}")
 
     def get_filtered_signal(self) -> np.ndarray:
-        """Retourne le signal PPG filtre pour affichage temps reel."""
+        """Returns the filtered PPG signal for real-time display."""
         if len(self._buf) < 10:
             return np.array([])
         arr = np.array(self._buf, dtype=float)
@@ -199,26 +195,26 @@ class PPGProcessor:
 
 
 # ==============================================================
-# PZTProcessor -- RR et apnee cognitive depuis le signal PZT
+# PZTProcessor -- RR and cognitive apnea from the PZT signal
 # ==============================================================
 
 
 class PZTProcessor:
     """
-    Extrait deux metriques depuis le signal PZT brut :
-      - RR    : rythme respiratoire en cycles/minute
-      - Apnee : True si aucune inspiration pendant > 4 secondes
+    Extract two metrics from the raw PZT signal:
+      - RR:    respiratory rate in cycles per minute
+      - Apnea: True if there is no inhalation for > 4 seconds
 
     Pipeline [ref 3] :
-      1. Buffer glissant de PZT_WINDOW_SEC secondes (15s)
-      2. Filtre Butterworth passe-bande [0.1-0.8 Hz]
-      3. Detection de pics (chaque pic = une inspiration)
-      4. RR = 60 / IBI_moyen sur les 3 derniers cycles
+      1. PZT_WINDOW_SEC-second (15-second) sliding buffer
+      2. Butterworth bandpass filter [0.1-0.8 Hz]
+      3. Peaks detection (one spike = one breath)
+      4. RR = 60 / average IBI over the last 3 cycles
 
-    Lien avec charge cognitive [ref 4] :
-      Episodes cognitifs exigeants -> respiration plus rapide.
-      Sous surcharge > 7 elements, on observe des pauses respiratoires
-      involontaires liees a la concentration extreme.
+    Link to cognitive load [ref 4] :
+      Cognitively demanding tasks -> faster breathing.
+      Under heavy mental strain (more than 7 elements), involuntary breathing pauses
+      occur due to extreme concentration.
     """
 
     def __init__(self):
@@ -231,13 +227,13 @@ class PZTProcessor:
         self.last_peaks = []
         self._last_peak_ts = None
 
-        # Seuil apnee : 4 secondes sans inspiration [doc conception]
+        # Apnea threshold: 4 seconds without breathing
         self.APNEA_THRESHOLD_SEC = 4.0
 
         self.rr_history = []
         self.apnea_history = []
 
-        # Filtre Butterworth passe-bande [ref 3]
+        # Butterworth bandpass filter [ref 3]
         nyq = config.SAMPLING_RATE / 2
         low = config.PZT_LOW_HZ / nyq
         high = config.PZT_HIGH_HZ / nyq
@@ -249,22 +245,22 @@ class PZTProcessor:
 
     def update(self, pzt_value: int, timestamp: float):
         """
-        Ajoute un echantillon PZT brut et recalcule RR + apnee.
-        Appele a chaque frame BITalino (100 Hz).
+        Add a raw PZT sample and recalculate RR and apnea.
+        Called at every BITalino frame (100 Hz).
         """
         self._buf.append(pzt_value)
         self._ts_buf.append(timestamp)
         self._sample_count += 1
 
-        # Detection d apnee : verifier en permanence (reactif)
+        # Apnea detection: continuously monitor (reactive)
         self._check_apnea(timestamp)
 
-        # Recalcul RR toutes les 100 frames = toutes les secondes
+        # Recalculate RR every 100 frames = every second
         if self._sample_count % 100 == 0:
             self._compute_rr()
 
     def _check_apnea(self, timestamp: float):
-        """Verifie si une pause respiratoire est en cours."""
+        """Check to see if a breathing pause is in progress."""
         if self._last_peak_ts is None:
             self.apnea_detected = False
             return
@@ -278,7 +274,7 @@ class PZTProcessor:
             logging.info(f"[PZT] Apnée cognitive detectée (pause {elapsed:.1f}s)")
 
     def _compute_rr(self):
-        """Calcul interne du rythme respiratoire."""
+        """Internal calculation of respiratory rate."""
         if len(self._buf) < int(5 * config.SAMPLING_RATE):
             return
 
@@ -289,7 +285,7 @@ class PZTProcessor:
         except Exception:
             return
 
-        # distance min = 1.25s = 48 cycles/min max [ref 3]
+        # min. distance = 1.25 s = 48 cycles/min max [ref 3]
         min_dist = int(1.25 * config.SAMPLING_RATE)
         height_thr = 0.3 * (filtered.max() - filtered.min())
         if height_thr < 1:
@@ -303,19 +299,19 @@ class PZTProcessor:
         if len(peaks) < 2:
             return
 
-        # Mettre a jour le timestamp du dernier pic (pour l apnee)
+        # Update the timestamp of the last peak (for apnea)
         if self._ts_buf:
             ts_arr = list(self._ts_buf)
             last_p = peaks[-1]
             if last_p < len(ts_arr):
                 self._last_peak_ts = ts_arr[last_p]
 
-        # RR = 60 / IBI_moyen sur les 3 derniers cycles [doc conception]
+        # RR = 60 / average IBI over the last 3 cycles
         recent_peaks = peaks[-4:]
         ibis_samples = np.diff(recent_peaks)
         ibis_sec = ibis_samples / config.SAMPLING_RATE
 
-        # Plage valide : 6-48 cycles/min = intervalles 1.25-10 secondes
+        # Valid range: 6–48 cycles per minute = intervals of 1.25–10 seconds
         valid_ibis = ibis_sec[(ibis_sec > 1.25) & (ibis_sec < 10.0)]
         if len(valid_ibis) == 0:
             return
@@ -331,7 +327,7 @@ class PZTProcessor:
             self.rr_history.append((self._ts_buf[-1], self.rr_rpm))
 
     def get_filtered_signal(self) -> np.ndarray:
-        """Retourne le signal PZT filtre pour affichage."""
+        """Returns the filtered PZT signal for display."""
         if len(self._buf) < 10:
             return np.array([])
         arr = np.array(self._buf, dtype=float)
@@ -342,63 +338,63 @@ class PZTProcessor:
 
 
 # ==============================================================
-# KeyboardProcessor -- RT et taux d erreur depuis le clavier
+# KeyboardProcessor -- Response time and error rate from the keyboard
 # ==============================================================
 
 
 class KeyboardProcessor:
     """
-    Calcule les metriques comportementales depuis les reponses clavier.
+    Calculates behavioral metrics based on keyboard responses.
 
-      - RT         : temps de reaction en ms (t_appui - t_affichage)
-      - RT_moyen   : moyenne glissante des 3 derniers RT
-      - taux_erreur: nb_mauvaises / nb_total par niveau
+      - RT:         reaction time in ms (t_press - t_display)
+      - RT_moyen:   moving average of the last 3 RTs
+      - error_rate: number_of_errors / total_count per level
 
-    Lien avec charge cognitive :
-      Le RT est un indicateur comportemental robuste de la charge cognitive.
-      Plus la charge augmente, plus le RT s allonge.
+    Link to cognitive load:
+      RT is a robust behavioral indicator of cognitive load.
+      PAs the load increases, RT increases.
       [Welford 1980, Reaction Times, Academic Press]
 
-    Utilisation :
+    Usage:
         kp = KeyboardProcessor()
-        kp.arrow_shown("UP", time.perf_counter())      # quand la fleche s affiche
-        kp.arrow_answered("UP", time.perf_counter())   # quand le joueur appuie
+        kp.arrow_shown("UP", time.perf_counter())      # when the arrow is displayed
+        kp.arrow_answered("UP", time.perf_counter())   # when the player presses
     """
 
     def __init__(self):
-        self.rt_ms = None  # dernier temps de reaction (ms)
-        self.rt_mean_ms = None  # moyenne des 3 derniers RT
-        self.error_rate = 0.0  # taux d erreur (0.0 a 1.0)
+        self.rt_ms = None  # last response time (ms)
+        self.rt_mean_ms = None  # average of the last 3 RTs
+        self.error_rate = 0.0  # 0.0-1.0
 
-        self._rt_buf = deque(maxlen=3)  # 3 derniers RT
-        self._pending_ts = None  # timestamp derniere fleche affichee
-        self._pending_dir = None  # direction attendue
+        self._rt_buf = deque(maxlen=3)  # 3 last RT
+        self._pending_ts = None  # timestamp of the last arrow displayed
+        self._pending_dir = None  # expected direction
 
         self._total = 0
         self._errors = 0
 
         self.rt_history = []  # (timestamp, rt_ms)
-        self.error_history = []  # (timestamp, taux_erreur)
+        self.error_history = []  # (timestamp, error_rate)
 
     def arrow_shown(self, direction: str, timestamp: float):
         """
-        Enregistre l affichage d une fleche.
-        Appele par le jeu au moment exact ou la fleche apparait.
+        Records the display of an arrow.
+        Called by the game at the exact moment the arrow appears.
         """
         self._pending_ts = timestamp
         self._pending_dir = direction
 
     def arrow_answered(self, direction_given: str, timestamp: float) -> bool:
         """
-        Enregistre la reponse du joueur et calcule le RT.
-        Appele par le jeu au moment exact de l appui clavier.
+        Records the player's response and calculates the response time.
+        Called by the game at the exact moment the key is pressed.
 
-        Retourne True si la reponse est correcte.
+        Returns True if the response is correct.
         """
         if self._pending_ts is None:
             return False
 
-        # Calcul RT en millisecondes
+        # RT calculation in milliseconds
         rt = (timestamp - self._pending_ts) * 1000
         if 50 < rt < 10000:  # sanity check : 50ms min, 10s max
             self.rt_ms = rt
@@ -406,7 +402,7 @@ class KeyboardProcessor:
             self.rt_mean_ms = float(np.mean(self._rt_buf))
             self.rt_history.append((timestamp, rt))
 
-        # Verification correcte / erreur
+        # Correct / Error checking
         correct = direction_given == self._pending_dir
         self._total += 1
         if not correct:
@@ -419,35 +415,34 @@ class KeyboardProcessor:
         return correct
 
     def reset_level(self):
-        """Remet a zero les compteurs pour un nouveau niveau."""
+        """Resets the counters for a new level."""
         self._total = 0
         self._errors = 0
         self.error_rate = 0.0
 
 
 # ==============================================================
-# CognitiveLoadIndex -- Indice composite I_cog
+# CognitiveLoadIndex -- Composite indexe I_cog
 # ==============================================================
 
 
 class CognitiveLoadIndex:
     """
-    Calcule l indice composite de charge cognitive I_cog.
+    Calculate the composite cognitive load index I_cog.
 
     I_cog = (z_FC + z_PWA_inv + z_RR + z_RT) / 4
 
-    Chaque metrique normalisee par z-score individuel :
-        z = (valeur - mu_baseline) / sigma_baseline
+    Each metric normalized by individual z-score:
+      z = (valeur - mu_baseline) / sigma_baseline
 
-    z_PWA est inverte car PWA diminue quand la charge augmente [ref 2].
+    z_PWA is inversely proportional because PWA decreases as the load increases [ref 2].
 
-    Seuil de surcharge : I_cog > 1.5
-    = 1.5 ecart-type au-dessus du repos individuel
+    Overload threshold: I_cog > 1.5
+    = 1.5 standard deviations above the individual resting value
 
-    Justification z-score :
-      Methode standard en psychophysiologie pour normaliser
-      les differences inter-individuelles. Seuil 1.5 = conservateur,
-      evite les faux positifs tout en restant sensible.
+    Z-score justification :
+       A standard method in psychophysiology for normalizing inter-individual differences.
+       Threshold 1.5 = conservative, avoids false positives while remaining sensitive.
     """
 
     OVERLOAD_THRESHOLD = 1.5
@@ -465,9 +460,9 @@ class CognitiveLoadIndex:
 
     def set_baseline(self, metric: str, values: list):
         """
-        Definit la baseline pour une metrique a partir des valeurs de repos.
-        metric : "fc" / "pwa" / "rr" / "rt"
-        values : liste des valeurs mesurees pendant la phase de repos
+        Defines the baseline for a metric based on resting values.
+        metric: “fc” / “pwa” / ‘rr’ / “rt”
+        values: list of values measured during the resting phase
         """
         if len(values) < 3:
             logging.warning(
@@ -478,20 +473,20 @@ class CognitiveLoadIndex:
         mu = float(np.mean(arr))
         sigma = float(np.std(arr))
         if sigma < 0.01:
-            sigma = 0.01  # evite la division par zero
+            sigma = 0.01  # avoids division by zero
         self._baseline[metric]["mu"] = mu
         self._baseline[metric]["sigma"] = sigma
         logging.info(f"[I_cog] Baseline {metric} : mu={mu:.2f}  sigma={sigma:.2f}")
 
     @property
     def is_calibrated(self) -> bool:
-        """True si toutes les baselines sont definies."""
+        """True if all baselines are defined."""
         return all(
             self._baseline[m]["mu"] is not None for m in ["fc", "pwa", "rr", "rt"]
         )
 
     def _zscore(self, metric: str, value: float, invert: bool = False):
-        """Calcule le z-score d une metrique. Retourne None si pas calibre."""
+        """Calculates the z-score of a metric. Returns None if not calibrated."""
         b = self._baseline[metric]
         if b["mu"] is None:
             return None
@@ -500,10 +495,10 @@ class CognitiveLoadIndex:
 
     def update(self, fc, pwa, rr, rt, timestamp: float):
         """
-        Recalcule I_cog avec les valeurs courantes.
-        Les metriques None sont ignorees (n influencent pas l indice).
+        Recalculates I_cog using the current values.
+        Metrics marked as None are ignored (they do not affect the index).
 
-        Retourne I_cog (float) ou None si calibration incomplete.
+        Returns I_cog (float) or None if calibration is incomplete.
         """
         if not self.is_calibrated:
             return None
@@ -541,16 +536,16 @@ class CognitiveLoadIndex:
 
 
 # ==============================================================
-# CalibrationPhase -- collecte les baselines au lancement
+# CalibrationPhase -- collects baselines at launch
 # ==============================================================
 
 
 class CalibrationPhase:
     """
-    Gere la phase de calibration de 30 secondes au lancement.
-    Le joueur est au repos -> on mesure les valeurs physiologiques de base.
+    Handles the 30-second calibration phase at startup.
+    The player is at rest -> baseline physiological values are measured.
 
-    Utilisation :
+    Usage:
         calib = CalibrationPhase(ppg_proc, pzt_proc, cog_idx)
         calib.start()
         while not calib.is_done():
@@ -578,15 +573,15 @@ class CalibrationPhase:
         self._rr_vals = []
 
     def start(self):
-        """Demarre la phase de calibration."""
+        """Start the calibration phase."""
         self._start_time = time.perf_counter()
         logging.info(f"[Calibration] Debut -- {self.DURATION_SEC}s de repos")
         logging.info("[Calibration] Restez immobile et respirez normalement")
 
     def update(self, sample: dict):
         """
-        Traite un echantillon pendant la calibration.
-        sample doit contenir : {"ts": float, "ppg": int, "pzt": int}
+        Processes a sample during calibration.
+        sample must contain: {"ts": float, "ppg": int, "pzt": int}
         """
         if self._start_time is None or self._done:
             return
@@ -603,13 +598,13 @@ class CalibrationPhase:
             self._rr_vals.append(self._pzt.rr_rpm)
 
     def is_done(self) -> bool:
-        """True si la duree de calibration est ecoulee."""
+        """True if the calibration period has expired."""
         if self._start_time is None:
             return False
         return (time.perf_counter() - self._start_time) >= self.DURATION_SEC
 
     def finalize(self):
-        """Calcule et applique les baselines. Appeler apres is_done()."""
+        """Calculates and applies the baselines. Call after is_done()."""
         if self._done:
             return
         self._done = True
@@ -634,7 +629,7 @@ class CalibrationPhase:
 
 
 # ==============================================================
-# TEST STANDALONE -- python signal_processing.py
+# STANDALONE TEST -- python signal_processing.py
 # ==============================================================
 
 if __name__ == "__main__":
@@ -652,7 +647,7 @@ if __name__ == "__main__":
     t_arr = np.linspace(0, DURATION, N)
     logging.info(f"\nGénération de {DURATION}s de signaux synthétiques...")
 
-    # PPG : onde de pouls a 72 bpm (1.2 Hz)
+    # PPG : pulse wave at 72 bpm (1.2 Hz)
     ppg_signal = (
         np.sin(2 * np.pi * 1.2 * t_arr)
         * 6000
@@ -660,7 +655,7 @@ if __name__ == "__main__":
         + np.random.normal(0, 200, N)
     ) + 32768
 
-    # PZT : respiration a 15 cycles/min (0.25 Hz)
+    # PZT : respiratory rate of 15 breaths per minute (0.25 Hz)
     pzt_signal = (
         np.sin(2 * np.pi * 0.25 * t_arr) * 10000 + np.random.normal(0, 100, N)
     ) + 32768
@@ -670,9 +665,9 @@ if __name__ == "__main__":
     cog_idx = CognitiveLoadIndex()
     kb_proc = KeyboardProcessor()
 
-    # Baseline calculee depuis les 10 premieres secondes du signal synthetique
-    # (equivalent a la CalibrationPhase en situation reelle)
-    # On alimente d abord 10s de donnees, on recupere les valeurs, puis on calibre
+    # Baseline calculated from the first 10 seconds of the synthetic signal
+    # (equivalent to the CalibrationPhase in a real-world scenario)
+    # First, we feed in 10 seconds of data, retrieve the values, and then calibrate
     logging.info("Phase de calibration synthétique (10s)...")
     ts_now = time.perf_counter()
     calib_samples = int(10 * config.SAMPLING_RATE)
@@ -681,13 +676,13 @@ if __name__ == "__main__":
         ppg_proc.update(int(ppg_signal[i]), ts_c)
         pzt_proc.update(int(pzt_signal[i]), ts_c)
 
-    # Collecter les valeurs calculees pendant cette calibration
+    # Collect the values calculated during this calibration
     fc_calib = [v for _, v in ppg_proc.fc_history]
     pwa_calib = [v for _, v in ppg_proc.pwa_history]
     rr_calib = [v for _, v in pzt_proc.rr_history]
-    rt_calib = [400.0, 420.0, 380.0, 410.0, 390.0]  # RT simule niveau 1
+    rt_calib = [400.0, 420.0, 380.0, 410.0, 390.0]  # RT Level 1 Simulation
 
-    # Appliquer les baselines reelles
+    # Apply the actual baselines
     if pwa_calib:
         ppg_proc.set_baseline(float(np.mean(pwa_calib)))
         cog_idx.set_baseline("pwa", pwa_calib)
@@ -720,7 +715,7 @@ if __name__ == "__main__":
     rr_ts, rr_vals = [], []
     icog_ts, icog_v = [], []
 
-    # Commencer apres la calibration (les 10 premieres secondes deja traitees)
+    # Start after calibration (the first 10 seconds have already been processed)
     calib_start = int(10 * config.SAMPLING_RATE)
     for i in range(calib_start, N):
         ts = ts_now + t_arr[i]

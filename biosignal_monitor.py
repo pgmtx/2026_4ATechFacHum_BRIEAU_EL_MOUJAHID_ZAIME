@@ -1,11 +1,11 @@
 """
-biosignal_monitor.py — Acquisition BITalino + graphes matplotlib temps réel.
+biosignal_monitor.py — BITalino acquisition + real-time matplotlib graphs.
 
-Basé sur acquisation_processing_.py (qui marchait).
-- Attend que le jeu démarre (calib_start dans live_events.json)
-- FuncAnimation : PPG | PZT | Touches | I_cog
-- Quand game_end détecté → affiche le rapport final dans la même fenêtre
-- Sauvegarde les données complètes de la session dans live_events.json pour analysis.py
+Based on acquisation_processing_.py.
+- Waits for the game to start (calib_start in live_events.json)
+- FuncAnimation : PPG | PZT | Keys | I_cog
+- When game_end detected, displays the final report on the game window.
+- the complete session data in live_events.json for analysis.py
 """
 
 import json

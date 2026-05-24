@@ -2,8 +2,7 @@
 ==============================================================
 ChunkyMemo — config.py
 ==============================================================
-Fichier de configuration CENTRAL.
-Tous les autres fichiers importent depuis ici.
+Central configuration file, needed by the other files.
 ==============================================================
 """
 
@@ -12,13 +11,13 @@ import os
 import platform
 import sys
 
-# Ajoute le dossier du script dans sys.path pour trouver plux.pyd
+# Makes sure the lib file is available even when not running from the project directory.
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 if _SCRIPT_DIR not in sys.path:
     sys.path.insert(0, _SCRIPT_DIR)
 
 # ==============================================================
-# PLUX — compatibilite OS
+# PLUX — OS compatibility
 # ==============================================================
 
 python_version = platform.python_version()
@@ -40,7 +39,7 @@ if sys.platform == "darwin":
         OS_DIC["Darwin"] = "MacOS/Intel310"
 
 # ==============================================================
-# CONNEXION BITALINO
+# BITALINO CONNECTION
 # ==============================================================
 
 MAC_ADDRESS = "98:D3:11:FE:03:67"
@@ -51,67 +50,67 @@ MAC_ADDRESS = "98:D3:11:FE:03:67"
 
 SAMPLING_RATE = 100  # Hz
 RESOLUTION = 16  # bits
-DURATION_MAX = 3600  # secondes max par session
+DURATION_MAX = 3600  # max seconds per session
 
 # ==============================================================
-# PORTS BITALINO — PPG + PZT uniquement (ACC desactive)
+# BITALINO PORTS — PPG + PZT only
 # ==============================================================
-# Branchement physique :
-#   Port 3 (A3) → PPG  (pince doigt, capteur de pouls)
-#   Port 4 (A4) → PZT  (ceinture thoracique, respiration)
+# Physical connections :
+#   Port 3 (A3) → PPG (finger clip, pulse sensor)
+#   Port 4 (A4) → PZT (chest strap, breathing)
 #
-# ACC desactive pour le moment.
-# Pour le reactiver plus tard : ajouter [1, 2] dans ACTIVE_PORTS
-# et definir IDX_ACC_X = 0, IDX_ACC_Y = 1, puis decaler IDX_PPG/PZT.
+# ACC currently disabled.
+# To reenabled later: add [1, 2] to ACTIVE_PORTS
+# and define IDX_ACC_X = 0, IDX_ACC_Y = 1, then shift IDX_PPG/PZT.
 
 ACTIVE_PORTS = [3, 4]  # port 3 = PPG,  port 4 = PZT
 
-# Index dans data[] recu dans onRawFrame :
-#   data[0] → premier port de ACTIVE_PORTS → port 3 → PPG
-#   data[1] → deuxieme port de ACTIVE_PORTS → port 4 → PZT
+# Indices inside data[] received in onRawFrame :
+#   data[0] → first port of ACTIVE_PORTS → port 3 → PPG
+#   data[1] → second port of ACTIVE_PORTS → port 4 → PZT
 IDX_PPG = 0
 IDX_PZT = 1
 
 # ==============================================================
-# TRAITEMENT SIGNAL PPG (frequence cardiaque)
+# PPG SIGNAL PROCESSING (heart rate)
 # ==============================================================
 
-PPG_LOW_HZ = 0.7  # Hz — 42 bpm minimum detectectable
-PPG_HIGH_HZ = 4.0  # Hz — 240 bpm maximum
-PPG_FILTER_ORDER = 4  # ordre filtre Butterworth
-PPG_WINDOW_SEC = 10  # secondes de fenetre glissante
+PPG_LOW_HZ = 0.7  # Hz — Minimum detectable heart rate: 42 bpm
+PPG_HIGH_HZ = 4.0  # Hz — Minimum detectable heart rate: 240 bpm
+PPG_FILTER_ORDER = 4  # Butterworth filter order
+PPG_WINDOW_SEC = 10  # sliding window seconds
 
 # ==============================================================
-# TRAITEMENT SIGNAL PZT (respiration)
+# PZT SIGNAL PROCESSING (breathing)
 # ==============================================================
 
-PZT_LOW_HZ = 0.1  # Hz — 6 respirations/min minimum
-PZT_HIGH_HZ = 0.8  # Hz — 48 respirations/min maximum
+PZT_LOW_HZ = 0.1  # Hz — 6 breaths per minute minimum
+PZT_HIGH_HZ = 0.8  # Hz — 48 breaths per minute maximum
 PZT_FILTER_ORDER = 4
-PZT_WINDOW_SEC = 15  # fenetre plus large car respiration plus lente
+PZT_WINDOW_SEC = 15  # a wider window because breathing is slower
 
 # ==============================================================
-# BUFFERS ET AFFICHAGE
+# BUFFERS AND DISPLAY
 # ==============================================================
 
-QUEUE_MAXSIZE = 2000  # taille max queue entre thread acquisition et jeu
-GRAPH_HISTORY = 500  # points affiches sur les courbes temps reel
+QUEUE_MAXSIZE = 2000  # Maximum queue size between thread acquisition and execution
+GRAPH_HISTORY = 500  # data points plotted on real-time curves
 
 # ==============================================================
-# EXPORT DONNEES
+# DATA EXPORT
 # ==============================================================
 
-CSV_OUTPUT_DIR = "sessions"  # cree automatiquement si absent
+CSV_OUTPUT_DIR = "sessions"  # automatically created if absent
 
 # ==============================================================
-# VALIDATION — appelee au demarrage de chaque module
+# VALIDATION — called when each module starts up
 # ==============================================================
 
 
 def validate():
     """
-    Verifie que la configuration est coherente.
-    Retourne True si tout est ok, False sinon.
+    Checks that the configuration is consistent.
+    Returns True if everything is OK, False otherwise.
     """
     ok = True
 

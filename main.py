@@ -1,13 +1,13 @@
 """
 ChunkyMemo — main.py (architecture finale simple)
 
-Lance 2 sous-processus indépendants en parallèle :
-  1. game_runner.py   — jeu pygame pur
-  2. biosignal_monitor.py — acquisition BITalino + graphes matplotlib
+Launches two independent subprocesses in parallel:
+  1. game_runner.py   — the pygame game
+  2. biosignal_monitor.py — BITalino acquisition + matplotlib graphs
 
-Les deux communiquent via sessions/live_events.json :
-  - game_runner .py écrit les événements jeu (niveaux, touches, score)
-  - biosignal_monitor.py les lit pour annoter ses graphes
+Both communicate via sessions/live_events.json :
+  - game_runner .py records game events (levels, key presses, score)
+  - biosignal_monitor.py reads them to annotate its graphs
 """
 
 import json

@@ -1,6 +1,6 @@
 """
-game_runner.py — Jeu pygame pur avec suivi des evenements.
-Patch via _start_next_round (plus fiable que __init__).
+game_runner.py — A pure PyGame game with event handling
+Patch via _start_next_round (more reliable than __init__).
 """
 
 import json
@@ -87,20 +87,20 @@ def patch_game(game):
 
     CalibrationState.update = cast(Any, new_calib)
 
-    # ── NORMAL : patcher _start_next_round ───────────────────
-    # C'est appelé à chaque nouveau niveau (arrows_count += 1)
+    # ── NORMAL : patch _start_next_round ───────────────────
+    # Called at the start of each new level (arrows_count += 1)
     orig_sa_next = SingleArrowState._start_next_round
     orig_sa_handle = SingleArrowState.handle_player_inputs
 
     def new_sa_next(self: SingleArrowState):
-        # Fermer le niveau précédent
+        # Close the previous level
         d = load_ev()
         if d["levels_normal"]:
             last_level = d["levels_normal"][-1]
             last_level["ts_end"] = ts()
             last_level["success"] = True
-        orig_sa_next(self)  # arrows_count += 1 ici
-        # Ouvrir le nouveau niveau
+        orig_sa_next(self)  # arrows_count increses here
+        # Open a new level
         d["levels_normal"].append(
             {"level": self.arrows_count, "ts": ts(), "ts_end": None, "success": True}
         )
@@ -108,7 +108,7 @@ def patch_game(game):
 
     def new_sa_handle(self: SingleArrowState):
         was = game.current_state
-        # Enregistrer touche
+        # Save key
         if not self.show_arrows and self.chosen_direction is not None:
             expected = self.arrow_directions[self.pressed_directions]
             correct = self.chosen_direction == expected
@@ -118,7 +118,7 @@ def patch_game(game):
             )
             save_ev(d)
         orig_sa_handle(self)
-        # Perdu
+
         has_lost = game.current_state is not self and was is self
         if has_lost and not isinstance(game.current_state, PrePairState):
             d = load_ev()
@@ -131,8 +131,7 @@ def patch_game(game):
     SingleArrowState._start_next_round = cast(Any, new_sa_next)
     SingleArrowState.handle_player_inputs = cast(Any, new_sa_handle)
 
-    # Détecter quand SingleArrowState devient actif (premier niveau = 1)
-    # en patchant update pour enregistrer le niveau 1
+    # Detects when SingleArrowState becomes active (level 1) by patching the update function to record level 1
     orig_sa_update = SingleArrowState.update
     _sa_registered = [False]
 
@@ -141,7 +140,7 @@ def patch_game(game):
             _sa_registered[0] = True
             d = load_ev()
             d["phase"] = "normal"
-            # Niveau 1 (arrows_count commence à 1)
+            # Level 1 (arrows_count = 1)
             if not any(lv["level"] == 1 for lv in d["levels_normal"]):
                 d["levels_normal"].append(
                     {"level": 1, "ts": ts(), "ts_end": None, "success": True}
@@ -151,7 +150,7 @@ def patch_game(game):
 
     SingleArrowState.update = cast(Any, new_sa_update)
 
-    # ── Transition Normal → Chunking ──────────────────────────
+    # ── Transition from Normal to Chunking ──────────────────────────
     orig_prepair = PrePairState.__init__
 
     # The second parameter is not named game to avoid confusion with the outer parameter
@@ -164,7 +163,7 @@ def patch_game(game):
 
     PrePairState.__init__ = cast(Any, new_prepair)
 
-    # ── CHUNKING : patcher _start_next_round ─────────────────
+    # ── CHUNKING : patch _start_next_round ─────────────────
     orig_pa_next = PairArrowState._start_next_round
     orig_pa_update = PairArrowState.update
     _pa_registered = [False]
@@ -210,7 +209,7 @@ def patch_game(game):
     orig_sum_draw = SummaryState.draw
     orig_sum_handle = SummaryState.handle_events
     _surf: list[pygame.Surface] | None = None
-    _fig_idx = 0  # index courant galerie
+    _fig_idx = 0  # current gallery index
 
     def new_sum_init(self: SummaryState, gr: Game):
         orig_sum_init(self, gr)
@@ -225,15 +224,15 @@ def patch_game(game):
             f"[game] Fin — Normal niveaux:{len(d['levels_normal'])}  Chunking niveaux:{len(d['levels_chunking'])}"
         )
 
-        # Attendre que physio_live enrichisse les niveaux (max 4s)
+        # Wait for biosignal_monitor to load the levels (max 4s)
         import time as _t
 
-        deadline = _t.time() + 4
-        while _t.time() < deadline:
+        deadline = _t.perf_counter() + 4
+        while _t.perf_counter() < deadline:
             try:
                 with open(EVENTS_FILE) as f:
                     ev = json.load(f)
-                # Vérifier si les physio sont disponibles
+                # Check if the physios are available
                 n_lvs = ev.get("levels_normal", [])
                 if n_lvs and n_lvs[0].get("hr_bpm") is not None:
                     break
@@ -241,7 +240,7 @@ def patch_game(game):
                 pass
             _t.sleep(0.3)
 
-        # Générer PNG comparatif
+        # Generate a comparison PNG
         import glob as _gl
         import subprocess as _sp
 
@@ -249,9 +248,9 @@ def patch_game(game):
         proc = _sp.Popen(
             [sys.executable, "analysis.py"], stdout=None, stderr=None, env=_env
         )
-        proc.wait(timeout=10)  # attendre la fin
+        proc.wait(timeout=10)
 
-        # Charger toutes les figures depuis l'index
+        # Load all figures from the index
         try:
             with open("sessions/figures_index.json") as _f:
                 idx = json.load(_f)
@@ -297,14 +296,17 @@ def patch_game(game):
         sw = scr.get_width()
         sh = scr.get_height()
         scr.fill("#014F84")
+
         # Titre
         scr.blit(self.title, self.title_rect)
+
         # Figure courante
         idx = _fig_idx % len(_surf)
         surf = _surf[idx]
         x = (sw - surf.get_width()) // 2
         y = self.title_rect.bottom + 5
         scr.blit(surf, (x, y))
+
         # Navigation
         font = pygame.font.SysFont("Arial", 20)
         nav = font.render(
@@ -313,7 +315,8 @@ def patch_game(game):
             (200, 200, 200),
         )
         scr.blit(nav, (sw // 2 - nav.get_width() // 2, sh - 35))
-        # Noms des figures
+
+        # Figure names
         names = ("FC", "RR", "PWA", "Succes", "Erreurs")
         if idx < len(names):
             lbl = font.render(names[idx], True, (255, 255, 200))

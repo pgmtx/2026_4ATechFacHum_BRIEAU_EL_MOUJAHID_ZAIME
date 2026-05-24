@@ -1,5 +1,5 @@
 """
-analysis.py - Comparaison Normal vs Chunking - figures individuelles
+analysis.py - Normal vs Chunking comparison - individual figures
 """
 
 import glob
