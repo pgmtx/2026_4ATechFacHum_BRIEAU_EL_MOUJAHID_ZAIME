@@ -206,7 +206,7 @@ def save_figures(data, prefix):
     plt.tight_layout()
     _save(fig, "3_PWA")
 
-    # Figure 4 : Succes
+    # Figure 4 : Success
     fig, ax = plt.subplots(figsize=(8, 5))
     _base(ax, "Succes par niveau", "Succes (1=oui, 0=non)")
     ax.set_ylim(0, 1.3)
@@ -235,7 +235,7 @@ def save_figures(data, prefix):
     plt.tight_layout()
     _save(fig, "4_Succes")
 
-    # Figure 5 : Taux d'erreur
+    # Figure 5 : Error rate
     err_n = _errs(keys_n, levels_n)
     err_c = _errs(keys_c, levels_c)
     fig, ax = plt.subplots(figsize=(8, 5))
@@ -278,9 +278,8 @@ def main():
     os.makedirs("sessions", exist_ok=True)
     prefix = f"sessions/fig_{time.strftime('%Y%m%d_%H%M%S')}"
     paths = save_figures(data, prefix)
-    # Aussi garder la figure combinee pour compatibilite
+
     try:
-        # Ecrire le chemin des figures dans un fichier index
         index_file = "sessions/figures_index.json"
         with open(index_file, "w") as f:
             json.dump({"figures": paths, "ts": time.strftime("%Y%m%d_%H%M%S")}, f)
