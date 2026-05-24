@@ -69,15 +69,16 @@ def patch_game(game):
     orig_calib = CalibrationState.update
     _calib_started = [False]
 
-    def new_calib(self_c):
-        if not self_c.inited and not _calib_started[0]:
+    # The parameter must be named self to match the _start_next_round signature.
+    def new_calib(self: CalibrationState):
+        if not self.inited and not _calib_started[0]:
             _calib_started[0] = True
             d = load_ev()
             d["calib_start"] = ts()
             save_ev(d)
             t0[0] = time.time()
-        orig_calib(self_c)
-        if game.current_state is not self_c and _calib_started[0]:
+        orig_calib(self)
+        if game.current_state is not self and _calib_started[0]:
             d = load_ev()
             d["calib_end"] = ts()
             save_ev(d)
@@ -89,39 +90,41 @@ def patch_game(game):
     orig_sa_next = SingleArrowState._start_next_round
     orig_sa_handle = SingleArrowState.handle_player_inputs
 
-    def new_sa_next(self_s):
+    def new_sa_next(self: SingleArrowState):
         # Fermer le niveau précédent
         d = load_ev()
         if d["levels_normal"]:
-            d["levels_normal"][-1]["ts_end"] = ts()
-            d["levels_normal"][-1]["success"] = True
-        orig_sa_next(self_s)  # arrows_count += 1 ici
+            last_level = d["levels_normal"][-1]
+            last_level["ts_end"] = ts()
+            last_level[-1]["success"] = True
+        orig_sa_next(self)  # arrows_count += 1 ici
         # Ouvrir le nouveau niveau
         d["levels_normal"].append(
-            {"level": self_s.arrows_count, "ts": ts(), "ts_end": None, "success": True}
+            {"level": self.arrows_count, "ts": ts(), "ts_end": None, "success": True}
         )
         save_ev(d)
 
-    def new_sa_handle(self_s):
+    def new_sa_handle(self: SingleArrowState):
         was = game.current_state
         # Enregistrer touche
-        if not self_s.show_arrows and self_s.chosen_direction is not None:
-            expected = self_s.arrow_directions[self_s.pressed_directions]
-            correct = self_s.chosen_direction == expected
+        if not self.show_arrows and self.chosen_direction is not None:
+            expected = self.arrow_directions[self.pressed_directions]
+            correct = self.chosen_direction == expected
             d = load_ev()
             d["keys_normal"].append(
-                {"ts": ts(), "direction": self_s.chosen_direction, "correct": correct}
+                {"ts": ts(), "direction": self.chosen_direction, "correct": correct}
             )
             save_ev(d)
-        orig_sa_handle(self_s)
+        orig_sa_handle(self)
         # Perdu
-        if game.current_state is not self_s and was is self_s:
-            if not isinstance(game.current_state, PrePairState):
-                d = load_ev()
-                if d["levels_normal"]:
-                    d["levels_normal"][-1]["ts_end"] = ts()
-                    d["levels_normal"][-1]["success"] = False
-                save_ev(d)
+        has_lost = game.current_state is not self and was is self
+        if has_lost and not isinstance(game.current_state, PrePairState):
+            d = load_ev()
+            if d["levels_normal"]:
+                last_level = d["levels_normal"][-1]
+                last_level["ts_end"] = ts()
+                last_level["success"] = False
+            save_ev(d)
 
     SingleArrowState._start_next_round = new_sa_next
     SingleArrowState.handle_player_inputs = new_sa_handle
@@ -131,7 +134,7 @@ def patch_game(game):
     orig_sa_update = SingleArrowState.update
     _sa_registered = [False]
 
-    def new_sa_update(self_s):
+    def new_sa_update(self: SingleArrowState):
         if not _sa_registered[0]:
             _sa_registered[0] = True
             d = load_ev()
@@ -142,53 +145,56 @@ def patch_game(game):
                     {"level": 1, "ts": ts(), "ts_end": None, "success": True}
                 )
             save_ev(d)
-        orig_sa_update(self_s)
+        orig_sa_update(self)
 
     SingleArrowState.update = new_sa_update
 
     # ── Transition Normal → Chunking ──────────────────────────
     orig_prepair = PrePairState.__init__
 
-    def new_prepair(self_p, gr):
-        orig_prepair(self_p, gr)
+    # The second parameter is not named game to avoid confusion with the outer parameter
+    def new_prepair(self: PrePairState, gr: Game):
+        orig_prepair(self, gr)
         d = load_ev()
         d["phase"] = "chunking"
         d["transition_ts"] = ts()
         save_ev(d)
 
-    PrePairState.__init__ = new_prepair
+    PrePairState.__init__ = new_prepair  # pyright: ignore[reportAttributeAccessIssue]
 
     # ── CHUNKING : patcher _start_next_round ─────────────────
     orig_pa_next = PairArrowState._start_next_round
     orig_pa_update = PairArrowState.update
     _pa_registered = [False]
 
-    def new_pa_update(self_p):
+    def new_pa_update(self: PairArrowState):
         if not _pa_registered[0]:
             _pa_registered[0] = True
             d = load_ev()
-            n = len(self_p.pair_directions)
+            n = len(self.pair_directions)
             if not any(lv["level"] == n for lv in d["levels_chunking"]):
                 d["levels_chunking"].append(
                     {"level": n, "ts": ts(), "ts_end": None, "success": True}
                 )
             save_ev(d)
-        orig_pa_update(self_p)
+        orig_pa_update(self)
         # Perdu (state a changé)
-        if game.current_state is not self_p:
+        if game.current_state is not self:
             d = load_ev()
             if d["levels_chunking"] and d["levels_chunking"][-1]["ts_end"] is None:
-                d["levels_chunking"][-1]["ts_end"] = ts()
-                d["levels_chunking"][-1]["success"] = False
+                last_level = d["levels_chunking"][-1]
+                last_level["ts_end"] = ts()
+                last_level["success"] = False
             save_ev(d)
 
-    def new_pa_next(self_p):
+    def new_pa_next(self: PairArrowState):
         d = load_ev()
         if d["levels_chunking"]:
-            d["levels_chunking"][-1]["ts_end"] = ts()
-            d["levels_chunking"][-1]["success"] = True
-        orig_pa_next(self_p)
-        n = len(self_p.pair_directions)
+            last_level = d["levels_chunking"][-1]
+            last_level["ts_end"] = ts()
+            last_level["success"] = True
+        orig_pa_next(self)
+        n = len(self.pair_directions)
         d["levels_chunking"].append(
             {"level": n, "ts": ts(), "ts_end": None, "success": True}
         )
@@ -204,8 +210,8 @@ def patch_game(game):
     _surf = [None]  # liste de pygame.Surface
     _fig_idx = [0]  # index courant galerie
 
-    def new_sum_init(self_s, gr):
-        orig_sum_init(self_s, gr)
+    def new_sum_init(self: SummaryState, gr: Game):
+        orig_sum_init(self, gr)
         d = load_ev()
         d["game_end"] = ts()
         max_n = max((lv["level"] for lv in d["levels_normal"]), default=0)
@@ -275,19 +281,19 @@ def patch_game(game):
         else:
             _surf[0] = None
 
-    def new_sum_draw(self_s):
+    def new_sum_draw(self: SummaryState):
         if _surf[0] and isinstance(_surf[0], list) and len(_surf[0]) > 0:
-            scr = self_s.game.screen
+            scr = self.game.screen
             sw = scr.get_width()
             sh = scr.get_height()
             scr.fill("#014F84")
             # Titre
-            scr.blit(self_s.title, self_s.title_rect)
+            scr.blit(self.title, self.title_rect)
             # Figure courante
             idx = _fig_idx[0] % len(_surf[0])
             surf = _surf[0][idx]
             x = (sw - surf.get_width()) // 2
-            y = self_s.title_rect.bottom + 5
+            y = self.title_rect.bottom + 5
             scr.blit(surf, (x, y))
             # Navigation
             font = pygame.font.SysFont("Arial", 20)
@@ -303,23 +309,24 @@ def patch_game(game):
                 lbl = font.render(names[idx], True, (255, 255, 200))
                 scr.blit(lbl, (sw // 2 - lbl.get_width() // 2, sh - 60))
         else:
-            orig_sum_draw(self_s)
+            orig_sum_draw(self)
 
-    def new_sum_handle(self_s, events):
-        orig_sum_handle(self_s, events)
+    def new_sum_handle(self: SummaryState, events: list[pygame.event.Event]):
+        orig_sum_handle(self, events)
         for ev in events:
-            if ev.type == pygame.KEYDOWN:
-                if ev.key == pygame.K_ESCAPE:
-                    self_s.game.current_state = self_s.game.states["menu"]
-                    _surf[0] = None
-                elif ev.key in (pygame.K_RIGHT, pygame.K_d):
-                    if _surf[0] and isinstance(_surf[0], list):
-                        _fig_idx[0] = (_fig_idx[0] + 1) % len(_surf[0])
-                elif ev.key in (pygame.K_LEFT, pygame.K_q):
-                    if _surf[0] and isinstance(_surf[0], list):
-                        _fig_idx[0] = (_fig_idx[0] - 1) % len(_surf[0])
+            if ev.type != pygame.KEYDOWN:
+                continue
+            if ev.key == pygame.K_ESCAPE:
+                self.game.current_state = self.game.states["menu"]
+                _surf[0] = None
+            elif ev.key in (pygame.K_RIGHT, pygame.K_d):
+                if _surf[0] and isinstance(_surf[0], list):
+                    _fig_idx[0] = (_fig_idx[0] + 1) % len(_surf[0])
+            elif ev.key in (pygame.K_LEFT, pygame.K_q):
+                if _surf[0] and isinstance(_surf[0], list):
+                    _fig_idx[0] = (_fig_idx[0] - 1) % len(_surf[0])
 
-    SummaryState.__init__ = new_sum_init
+    SummaryState.__init__ = new_sum_init  # pyright: ignore[reportAttributeAccessIssue]
     SummaryState.draw = new_sum_draw
     SummaryState.handle_events = new_sum_handle
 
