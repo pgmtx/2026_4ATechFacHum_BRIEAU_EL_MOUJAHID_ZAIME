@@ -207,7 +207,7 @@ def patch_game(game):
     orig_sum_init = SummaryState.__init__
     orig_sum_draw = SummaryState.draw
     orig_sum_handle = SummaryState.handle_events
-    _surf: list[list[pygame.Surface] | None] = [None]
+    _surf: list[pygame.Surface] | None = None
     _fig_idx = [0]  # index courant galerie
 
     def new_sum_init(self: SummaryState, gr: Game):
@@ -272,57 +272,67 @@ def patch_game(game):
             except Exception as e:
                 print(f"[game] Erreur chargement {fp}: {e}")
 
+        # Allows new_sum_init to assign to patch_game()'s _surf (shares state across closures)
+        nonlocal _surf
+
         if surfs:
-            _surf[0] = surfs  # liste de surfaces
+            _surf = surfs
             _fig_idx[0] = 0
             print(f"[game] {len(surfs)} figures chargees")
         else:
-            _surf[0] = None
+            _surf = None
 
     def new_sum_draw(self: SummaryState):
-        if _surf[0] and isinstance(_surf[0], list) and len(_surf[0]) > 0:
-            scr = self.game.screen
-            sw = scr.get_width()
-            sh = scr.get_height()
-            scr.fill("#014F84")
-            # Titre
-            scr.blit(self.title, self.title_rect)
-            # Figure courante
-            idx = _fig_idx[0] % len(_surf[0])
-            surf = _surf[0][idx]
-            x = (sw - surf.get_width()) // 2
-            y = self.title_rect.bottom + 5
-            scr.blit(surf, (x, y))
-            # Navigation
-            font = pygame.font.SysFont("Arial", 20)
-            nav = font.render(
-                f"< >  Figure {idx + 1}/{len(_surf[0])}  |  ESC = menu",
-                True,
-                (200, 200, 200),
-            )
-            scr.blit(nav, (sw // 2 - nav.get_width() // 2, sh - 35))
-            # Noms des figures
-            names = ["FC", "RR", "PWA", "Succes", "Erreurs"]
-            if idx < len(names):
-                lbl = font.render(names[idx], True, (255, 255, 200))
-                scr.blit(lbl, (sw // 2 - lbl.get_width() // 2, sh - 60))
-        else:
+        has_surface = isinstance(_surf, list) and _surf
+        if not has_surface:
             orig_sum_draw(self)
+            return
+
+        # Prevents static analysis warning about None being non-subscriptable
+        assert isinstance(_surf, list)
+
+        scr = self.game.screen
+        sw = scr.get_width()
+        sh = scr.get_height()
+        scr.fill("#014F84")
+        # Titre
+        scr.blit(self.title, self.title_rect)
+        # Figure courante
+        idx = _fig_idx[0] % len(_surf)
+        surf = _surf[idx]
+        x = (sw - surf.get_width()) // 2
+        y = self.title_rect.bottom + 5
+        scr.blit(surf, (x, y))
+        # Navigation
+        font = pygame.font.SysFont("Arial", 20)
+        nav = font.render(
+            f"< >  Figure {idx + 1}/{len(_surf)}  |  ESC = menu",
+            True,
+            (200, 200, 200),
+        )
+        scr.blit(nav, (sw // 2 - nav.get_width() // 2, sh - 35))
+        # Noms des figures
+        names = ("FC", "RR", "PWA", "Succes", "Erreurs")
+        if idx < len(names):
+            lbl = font.render(names[idx], True, (255, 255, 200))
+            scr.blit(lbl, (sw // 2 - lbl.get_width() // 2, sh - 60))
 
     def new_sum_handle(self: SummaryState, events: list[pygame.event.Event]):
         orig_sum_handle(self, events)
+
+        nonlocal _surf
         for ev in events:
             if ev.type != pygame.KEYDOWN:
                 continue
             if ev.key == pygame.K_ESCAPE:
                 self.game.current_state = self.game.states["menu"]
-                _surf[0] = None
+                _surf = None
             elif ev.key in (pygame.K_RIGHT, pygame.K_d):
-                if _surf[0] and isinstance(_surf[0], list):
-                    _fig_idx[0] = (_fig_idx[0] + 1) % len(_surf[0])
+                if _surf and isinstance(_surf, list):
+                    _fig_idx[0] = (_fig_idx[0] + 1) % len(_surf)
             elif ev.key in (pygame.K_LEFT, pygame.K_q):
-                if _surf[0] and isinstance(_surf[0], list):
-                    _fig_idx[0] = (_fig_idx[0] - 1) % len(_surf[0])
+                if _surf and isinstance(_surf, list):
+                    _fig_idx[0] = (_fig_idx[0] - 1) % len(_surf)
 
     SummaryState.__init__ = new_sum_init  # pyright: ignore[reportAttributeAccessIssue]
     SummaryState.draw = new_sum_draw
