@@ -41,16 +41,17 @@ Comment tester ce fichier seul :
 """
 
 import time
-import numpy as np
 from collections import deque
+
+import numpy as np
 from scipy import signal as sp_signal
 
 import config
 
-
 # ==============================================================
 # PPGProcessor -- FC et PWA depuis le signal PPG
 # ==============================================================
+
 
 class PPGProcessor:
     """
@@ -76,28 +77,28 @@ class PPGProcessor:
     def __init__(self):
         # Buffer circulaire : conserve les PPG_WINDOW_SEC dernieres secondes
         maxlen = int(config.PPG_WINDOW_SEC * config.SAMPLING_RATE)
-        self._buf    = deque(maxlen=maxlen)
+        self._buf = deque(maxlen=maxlen)
         self._ts_buf = deque(maxlen=maxlen)
 
         # Resultats calcules -- None = pas encore assez de donnees
-        self.fc_bpm        = None   # frequence cardiaque (bpm)
-        self.pwa_raw       = None   # amplitude brute pic-creux
-        self.pwa_norm      = None   # amplitude normalisee (/ baseline)
-        self.last_peaks    = []     # indices des derniers pics detectes
+        self.fc_bpm = None  # frequence cardiaque (bpm)
+        self.pwa_raw = None  # amplitude brute pic-creux
+        self.pwa_norm = None  # amplitude normalisee (/ baseline)
+        self.last_peaks = []  # indices des derniers pics detectes
 
         # Baseline individuelle (calculee pendant la calibration)
         self._pwa_baseline = None
 
         # Historique (timestamp, valeur)
-        self.fc_history    = []
-        self.pwa_history   = []
+        self.fc_history = []
+        self.pwa_history = []
 
         # Filtre Butterworth passe-bande [ref 1]
-        nyq  = config.SAMPLING_RATE / 2
-        low  = config.PPG_LOW_HZ  / nyq
+        nyq = config.SAMPLING_RATE / 2
+        low = config.PPG_LOW_HZ / nyq
         high = config.PPG_HIGH_HZ / nyq
         self._b, self._a = sp_signal.butter(
-            config.PPG_FILTER_ORDER, [low, high], btype='band'
+            config.PPG_FILTER_ORDER, [low, high], btype="band"
         )
 
         self._sample_count = 0
@@ -130,15 +131,13 @@ class PPGProcessor:
 
         # Detection de pics
         # distance min = 0.4s = 150 bpm max (limite physiologique)
-        min_dist   = int(0.4 * config.SAMPLING_RATE)
+        min_dist = int(0.4 * config.SAMPLING_RATE)
         height_thr = 0.3 * (filtered.max() - filtered.min())
         if height_thr < 1:
             return
 
         peaks, _ = sp_signal.find_peaks(
-            filtered,
-            distance=min_dist,
-            height=filtered.min() + height_thr
+            filtered, distance=min_dist, height=filtered.min() + height_thr
         )
         self.last_peaks = list(peaks)
 
@@ -148,14 +147,14 @@ class PPGProcessor:
         # FC = 60 / IBI_moyen sur les 5 derniers battements [doc conception]
         recent_peaks = peaks[-6:]
         ibis_samples = np.diff(recent_peaks)
-        ibis_sec     = ibis_samples / config.SAMPLING_RATE
+        ibis_sec = ibis_samples / config.SAMPLING_RATE
 
         # Filtrer les IBI hors plage physiologique (40-180 bpm)
         valid_ibis = ibis_sec[(ibis_sec > 0.33) & (ibis_sec < 1.5)]
         if len(valid_ibis) == 0:
             return
 
-        mean_ibi    = np.mean(valid_ibis)
+        mean_ibi = np.mean(valid_ibis)
         self.fc_bpm = 60.0 / mean_ibi
 
         if not (35 <= self.fc_bpm <= 200):
@@ -164,9 +163,9 @@ class PPGProcessor:
 
         # PWA = valeur_pic - valeur_creux_precedent [ref 2]
         last_peak_idx = peaks[-1]
-        search_start  = max(0, last_peak_idx - int(config.SAMPLING_RATE))
-        trough_idx    = np.argmin(filtered[search_start:last_peak_idx]) + search_start
-        self.pwa_raw  = float(filtered[last_peak_idx] - filtered[trough_idx])
+        search_start = max(0, last_peak_idx - int(config.SAMPLING_RATE))
+        trough_idx = np.argmin(filtered[search_start:last_peak_idx]) + search_start
+        self.pwa_raw = float(filtered[last_peak_idx] - filtered[trough_idx])
 
         # Normalisation par baseline individuelle
         if self._pwa_baseline is not None and self._pwa_baseline > 0:
@@ -202,6 +201,7 @@ class PPGProcessor:
 # PZTProcessor -- RR et apnee cognitive depuis le signal PZT
 # ==============================================================
 
+
 class PZTProcessor:
     """
     Extrait deux metriques depuis le signal PZT brut :
@@ -222,26 +222,26 @@ class PZTProcessor:
 
     def __init__(self):
         maxlen = int(config.PZT_WINDOW_SEC * config.SAMPLING_RATE)
-        self._buf    = deque(maxlen=maxlen)
+        self._buf = deque(maxlen=maxlen)
         self._ts_buf = deque(maxlen=maxlen)
 
-        self.rr_rpm         = None
+        self.rr_rpm = None
         self.apnea_detected = False
-        self.last_peaks     = []
-        self._last_peak_ts  = None
+        self.last_peaks = []
+        self._last_peak_ts = None
 
         # Seuil apnee : 4 secondes sans inspiration [doc conception]
         self.APNEA_THRESHOLD_SEC = 4.0
 
-        self.rr_history    = []
+        self.rr_history = []
         self.apnea_history = []
 
         # Filtre Butterworth passe-bande [ref 3]
-        nyq  = config.SAMPLING_RATE / 2
-        low  = config.PZT_LOW_HZ  / nyq
+        nyq = config.SAMPLING_RATE / 2
+        low = config.PZT_LOW_HZ / nyq
         high = config.PZT_HIGH_HZ / nyq
         self._b, self._a = sp_signal.butter(
-            config.PZT_FILTER_ORDER, [low, high], btype='band'
+            config.PZT_FILTER_ORDER, [low, high], btype="band"
         )
 
         self._sample_count = 0
@@ -289,15 +289,13 @@ class PZTProcessor:
             return
 
         # distance min = 1.25s = 48 cycles/min max [ref 3]
-        min_dist   = int(1.25 * config.SAMPLING_RATE)
+        min_dist = int(1.25 * config.SAMPLING_RATE)
         height_thr = 0.3 * (filtered.max() - filtered.min())
         if height_thr < 1:
             return
 
         peaks, _ = sp_signal.find_peaks(
-            filtered,
-            distance=min_dist,
-            height=filtered.min() + height_thr
+            filtered, distance=min_dist, height=filtered.min() + height_thr
         )
         self.last_peaks = list(peaks)
 
@@ -314,14 +312,14 @@ class PZTProcessor:
         # RR = 60 / IBI_moyen sur les 3 derniers cycles [doc conception]
         recent_peaks = peaks[-4:]
         ibis_samples = np.diff(recent_peaks)
-        ibis_sec     = ibis_samples / config.SAMPLING_RATE
+        ibis_sec = ibis_samples / config.SAMPLING_RATE
 
         # Plage valide : 6-48 cycles/min = intervalles 1.25-10 secondes
         valid_ibis = ibis_sec[(ibis_sec > 1.25) & (ibis_sec < 10.0)]
         if len(valid_ibis) == 0:
             return
 
-        mean_ibi    = np.mean(valid_ibis)
+        mean_ibi = np.mean(valid_ibis)
         self.rr_rpm = 60.0 / mean_ibi
 
         if not (4 <= self.rr_rpm <= 50):
@@ -346,6 +344,7 @@ class PZTProcessor:
 # KeyboardProcessor -- RT et taux d erreur depuis le clavier
 # ==============================================================
 
+
 class KeyboardProcessor:
     """
     Calcule les metriques comportementales depuis les reponses clavier.
@@ -361,31 +360,31 @@ class KeyboardProcessor:
 
     Utilisation :
         kp = KeyboardProcessor()
-        kp.arrow_shown("UP", time.time())      # quand la fleche s affiche
-        kp.arrow_answered("UP", time.time())   # quand le joueur appuie
+        kp.arrow_shown("UP", time.perf_counter())      # quand la fleche s affiche
+        kp.arrow_answered("UP", time.perf_counter())   # quand le joueur appuie
     """
 
     def __init__(self):
-        self.rt_ms       = None    # dernier temps de reaction (ms)
-        self.rt_mean_ms  = None    # moyenne des 3 derniers RT
-        self.error_rate  = 0.0     # taux d erreur (0.0 a 1.0)
+        self.rt_ms = None  # dernier temps de reaction (ms)
+        self.rt_mean_ms = None  # moyenne des 3 derniers RT
+        self.error_rate = 0.0  # taux d erreur (0.0 a 1.0)
 
-        self._rt_buf      = deque(maxlen=3)   # 3 derniers RT
-        self._pending_ts  = None              # timestamp derniere fleche affichee
-        self._pending_dir = None              # direction attendue
+        self._rt_buf = deque(maxlen=3)  # 3 derniers RT
+        self._pending_ts = None  # timestamp derniere fleche affichee
+        self._pending_dir = None  # direction attendue
 
-        self._total  = 0
+        self._total = 0
         self._errors = 0
 
-        self.rt_history    = []   # (timestamp, rt_ms)
-        self.error_history = []   # (timestamp, taux_erreur)
+        self.rt_history = []  # (timestamp, rt_ms)
+        self.error_history = []  # (timestamp, taux_erreur)
 
     def arrow_shown(self, direction: str, timestamp: float):
         """
         Enregistre l affichage d une fleche.
         Appele par le jeu au moment exact ou la fleche apparait.
         """
-        self._pending_ts  = timestamp
+        self._pending_ts = timestamp
         self._pending_dir = direction
 
     def arrow_answered(self, direction_given: str, timestamp: float) -> bool:
@@ -400,27 +399,27 @@ class KeyboardProcessor:
 
         # Calcul RT en millisecondes
         rt = (timestamp - self._pending_ts) * 1000
-        if 50 < rt < 10000:   # sanity check : 50ms min, 10s max
+        if 50 < rt < 10000:  # sanity check : 50ms min, 10s max
             self.rt_ms = rt
             self._rt_buf.append(rt)
             self.rt_mean_ms = float(np.mean(self._rt_buf))
             self.rt_history.append((timestamp, rt))
 
         # Verification correcte / erreur
-        correct = (direction_given == self._pending_dir)
+        correct = direction_given == self._pending_dir
         self._total += 1
         if not correct:
             self._errors += 1
         self.error_rate = self._errors / self._total if self._total > 0 else 0.0
         self.error_history.append((timestamp, self.error_rate))
 
-        self._pending_ts  = None
+        self._pending_ts = None
         self._pending_dir = None
         return correct
 
     def reset_level(self):
         """Remet a zero les compteurs pour un nouveau niveau."""
-        self._total  = 0
+        self._total = 0
         self._errors = 0
         self.error_rate = 0.0
 
@@ -428,6 +427,7 @@ class KeyboardProcessor:
 # ==============================================================
 # CognitiveLoadIndex -- Indice composite I_cog
 # ==============================================================
+
 
 class CognitiveLoadIndex:
     """
@@ -453,13 +453,13 @@ class CognitiveLoadIndex:
 
     def __init__(self):
         self._baseline = {
-            "fc":  {"mu": None, "sigma": None},
+            "fc": {"mu": None, "sigma": None},
             "pwa": {"mu": None, "sigma": None},
-            "rr":  {"mu": None, "sigma": None},
-            "rt":  {"mu": None, "sigma": None},
+            "rr": {"mu": None, "sigma": None},
+            "rt": {"mu": None, "sigma": None},
         }
-        self.i_cog         = None
-        self.overload      = False
+        self.i_cog = None
+        self.overload = False
         self.i_cog_history = []
 
     def set_baseline(self, metric: str, values: list):
@@ -471,12 +471,12 @@ class CognitiveLoadIndex:
         if len(values) < 3:
             print(f"[I_cog] Baseline {metric} : pas assez de valeurs ({len(values)})")
             return
-        arr   = np.array(values, dtype=float)
-        mu    = float(np.mean(arr))
+        arr = np.array(values, dtype=float)
+        mu = float(np.mean(arr))
         sigma = float(np.std(arr))
         if sigma < 0.01:
-            sigma = 0.01   # evite la division par zero
-        self._baseline[metric]["mu"]    = mu
+            sigma = 0.01  # evite la division par zero
+        self._baseline[metric]["mu"] = mu
         self._baseline[metric]["sigma"] = sigma
         print(f"[I_cog] Baseline {metric} : mu={mu:.2f}  sigma={sigma:.2f}")
 
@@ -484,8 +484,7 @@ class CognitiveLoadIndex:
     def is_calibrated(self) -> bool:
         """True si toutes les baselines sont definies."""
         return all(
-            self._baseline[m]["mu"] is not None
-            for m in ["fc", "pwa", "rr", "rt"]
+            self._baseline[m]["mu"] is not None for m in ["fc", "pwa", "rr", "rt"]
         )
 
     def _zscore(self, metric: str, value: float, invert: bool = False):
@@ -532,7 +531,7 @@ class CognitiveLoadIndex:
         if not z_scores:
             return None
 
-        self.i_cog    = float(np.mean(z_scores))
+        self.i_cog = float(np.mean(z_scores))
         self.overload = self.i_cog > self.OVERLOAD_THRESHOLD
         self.i_cog_history.append((timestamp, self.i_cog))
         return self.i_cog
@@ -541,6 +540,7 @@ class CognitiveLoadIndex:
 # ==============================================================
 # CalibrationPhase -- collecte les baselines au lancement
 # ==============================================================
+
 
 class CalibrationPhase:
     """
@@ -557,23 +557,26 @@ class CalibrationPhase:
 
     DURATION_SEC = 30
 
-    def __init__(self, ppg_proc: PPGProcessor,
-                 pzt_proc: PZTProcessor,
-                 cog_idx: CognitiveLoadIndex):
-        self._ppg  = ppg_proc
-        self._pzt  = pzt_proc
-        self._cog  = cog_idx
+    def __init__(
+        self,
+        ppg_proc: PPGProcessor,
+        pzt_proc: PZTProcessor,
+        cog_idx: CognitiveLoadIndex,
+    ):
+        self._ppg = ppg_proc
+        self._pzt = pzt_proc
+        self._cog = cog_idx
 
         self._start_time = None
-        self._done       = False
+        self._done = False
 
-        self._fc_vals  = []
+        self._fc_vals = []
         self._pwa_vals = []
-        self._rr_vals  = []
+        self._rr_vals = []
 
     def start(self):
         """Demarre la phase de calibration."""
-        self._start_time = time.time()
+        self._start_time = time.perf_counter()
         print(f"[Calibration] Debut -- {self.DURATION_SEC}s de repos")
         print("[Calibration] Restez immobile et respirez normalement")
 
@@ -600,7 +603,7 @@ class CalibrationPhase:
         """True si la duree de calibration est ecoulee."""
         if self._start_time is None:
             return False
-        return (time.time() - self._start_time) >= self.DURATION_SEC
+        return (time.perf_counter() - self._start_time) >= self.DURATION_SEC
 
     def finalize(self):
         """Calcule et applique les baselines. Appeler apres is_done()."""
@@ -622,15 +625,18 @@ class CalibrationPhase:
             self._cog.set_baseline("rr", self._rr_vals)
             print(f"[Calibration] RR repos : {np.mean(self._rr_vals):.1f} rpm")
 
-        print("[Calibration] Terminee -- baseline RT calculee sur les 5 premieres reponses du jeu")
+        print(
+            "[Calibration] Terminee -- baseline RT calculee sur les 5 premieres reponses du jeu"
+        )
+
 
 # ==============================================================
 # TEST STANDALONE -- python signal_processing.py
 # ==============================================================
 
 if __name__ == "__main__":
-    import matplotlib.pyplot as plt
     import matplotlib.gridspec as gridspec
+    import matplotlib.pyplot as plt
 
     print("=" * 55)
     print("TEST TRAITEMENT SIGNAL -- ChunkyMemo")
@@ -641,33 +647,33 @@ if __name__ == "__main__":
     print()
 
     DURATION = 60
-    N        = DURATION * config.SAMPLING_RATE
-    t_arr    = np.linspace(0, DURATION, N)
+    N = DURATION * config.SAMPLING_RATE
+    t_arr = np.linspace(0, DURATION, N)
     print(f"Generation de {DURATION}s de signaux synthetiques...")
 
     # PPG : onde de pouls a 72 bpm (1.2 Hz)
     ppg_signal = (
-        np.sin(2 * np.pi * 1.2 * t_arr) * 6000 *
-        np.maximum(0, np.sin(2 * np.pi * 1.2 * t_arr)) +
-        np.random.normal(0, 200, N)
+        np.sin(2 * np.pi * 1.2 * t_arr)
+        * 6000
+        * np.maximum(0, np.sin(2 * np.pi * 1.2 * t_arr))
+        + np.random.normal(0, 200, N)
     ) + 32768
 
     # PZT : respiration a 15 cycles/min (0.25 Hz)
     pzt_signal = (
-        np.sin(2 * np.pi * 0.25 * t_arr) * 10000 +
-        np.random.normal(0, 100, N)
+        np.sin(2 * np.pi * 0.25 * t_arr) * 10000 + np.random.normal(0, 100, N)
     ) + 32768
 
     ppg_proc = PPGProcessor()
     pzt_proc = PZTProcessor()
-    cog_idx  = CognitiveLoadIndex()
-    kb_proc  = KeyboardProcessor()
+    cog_idx = CognitiveLoadIndex()
+    kb_proc = KeyboardProcessor()
 
     # Baseline calculee depuis les 10 premieres secondes du signal synthetique
     # (equivalent a la CalibrationPhase en situation reelle)
     # On alimente d abord 10s de donnees, on recupere les valeurs, puis on calibre
     print("Phase de calibration synthetique (10s)...")
-    ts_now = time.time()
+    ts_now = time.perf_counter()
     calib_samples = int(10 * config.SAMPLING_RATE)
     for i in range(calib_samples):
         ts_c = ts_now + t_arr[i]
@@ -675,10 +681,10 @@ if __name__ == "__main__":
         pzt_proc.update(int(pzt_signal[i]), ts_c)
 
     # Collecter les valeurs calculees pendant cette calibration
-    fc_calib  = [v for _, v in ppg_proc.fc_history]
+    fc_calib = [v for _, v in ppg_proc.fc_history]
     pwa_calib = [v for _, v in ppg_proc.pwa_history]
-    rr_calib  = [v for _, v in pzt_proc.rr_history]
-    rt_calib  = [400.0, 420.0, 380.0, 410.0, 390.0]   # RT simule niveau 1
+    rr_calib = [v for _, v in pzt_proc.rr_history]
+    rt_calib = [400.0, 420.0, 380.0, 410.0, 390.0]  # RT simule niveau 1
 
     # Appliquer les baselines reelles
     if pwa_calib:
@@ -690,17 +696,29 @@ if __name__ == "__main__":
         cog_idx.set_baseline("rr", rr_calib)
     cog_idx.set_baseline("rt", rt_calib)
 
-    print(f"  FC baseline  : {np.mean(fc_calib):.1f} bpm" if fc_calib else "  FC baseline : pas encore calculee")
-    print(f"  PWA baseline : {np.mean(pwa_calib):.1f}" if pwa_calib else "  PWA baseline : pas encore calculee")
-    print(f"  RR baseline  : {np.mean(rr_calib):.1f} rpm" if rr_calib else "  RR baseline : pas encore calculee")
+    print(
+        f"  FC baseline  : {np.mean(fc_calib):.1f} bpm"
+        if fc_calib
+        else "  FC baseline : pas encore calculee"
+    )
+    print(
+        f"  PWA baseline : {np.mean(pwa_calib):.1f}"
+        if pwa_calib
+        else "  PWA baseline : pas encore calculee"
+    )
+    print(
+        f"  RR baseline  : {np.mean(rr_calib):.1f} rpm"
+        if rr_calib
+        else "  RR baseline : pas encore calculee"
+    )
     print()
 
     print("Traitement en cours...")
-    ts_now = time.time()
-    fc_ts, fc_vals   = [], []
+    ts_now = time.perf_counter()
+    fc_ts, fc_vals = [], []
     pwa_ts, pwa_vals = [], []
-    rr_ts, rr_vals   = [], []
-    icog_ts, icog_v  = [], []
+    rr_ts, rr_vals = [], []
+    icog_ts, icog_v = [], []
 
     # Commencer apres la calibration (les 10 premieres secondes deja traitees)
     calib_start = int(10 * config.SAMPLING_RATE)
@@ -716,58 +734,93 @@ if __name__ == "__main__":
 
         if i % config.SAMPLING_RATE == 0:
             ic = cog_idx.update(
-                ppg_proc.fc_bpm, ppg_proc.pwa_raw,
-                pzt_proc.rr_rpm, kb_proc.rt_ms, ts
+                ppg_proc.fc_bpm, ppg_proc.pwa_raw, pzt_proc.rr_rpm, kb_proc.rt_ms, ts
             )
             if ppg_proc.fc_bpm:
-                fc_ts.append(t_arr[i]); fc_vals.append(ppg_proc.fc_bpm)
+                fc_ts.append(t_arr[i])
+                fc_vals.append(ppg_proc.fc_bpm)
             if ppg_proc.pwa_raw:
-                pwa_ts.append(t_arr[i]); pwa_vals.append(ppg_proc.pwa_raw)
+                pwa_ts.append(t_arr[i])
+                pwa_vals.append(ppg_proc.pwa_raw)
             if pzt_proc.rr_rpm:
-                rr_ts.append(t_arr[i]); rr_vals.append(pzt_proc.rr_rpm)
+                rr_ts.append(t_arr[i])
+                rr_vals.append(pzt_proc.rr_rpm)
             if ic is not None:
-                icog_ts.append(t_arr[i]); icog_v.append(ic)
+                icog_ts.append(t_arr[i])
+                icog_v.append(ic)
 
-    print(f"FC finale  : {ppg_proc.fc_bpm:.1f} bpm" if ppg_proc.fc_bpm else "FC : non calculee")
-    print(f"PWA finale : {ppg_proc.pwa_raw:.1f}" if ppg_proc.pwa_raw else "PWA : non calculee")
-    print(f"RR final   : {pzt_proc.rr_rpm:.1f} rpm" if pzt_proc.rr_rpm else "RR : non calcule")
-    print(f"RT moyen   : {kb_proc.rt_mean_ms:.1f} ms" if kb_proc.rt_mean_ms else "RT : non calcule")
-    print(f"I_cog      : {cog_idx.i_cog:.3f}" if cog_idx.i_cog is not None else "I_cog : non calcule")
+    print(
+        f"FC finale  : {ppg_proc.fc_bpm:.1f} bpm"
+        if ppg_proc.fc_bpm
+        else "FC : non calculee"
+    )
+    print(
+        f"PWA finale : {ppg_proc.pwa_raw:.1f}"
+        if ppg_proc.pwa_raw
+        else "PWA : non calculee"
+    )
+    print(
+        f"RR final   : {pzt_proc.rr_rpm:.1f} rpm"
+        if pzt_proc.rr_rpm
+        else "RR : non calcule"
+    )
+    print(
+        f"RT moyen   : {kb_proc.rt_mean_ms:.1f} ms"
+        if kb_proc.rt_mean_ms
+        else "RT : non calcule"
+    )
+    print(
+        f"I_cog      : {cog_idx.i_cog:.3f}"
+        if cog_idx.i_cog is not None
+        else "I_cog : non calcule"
+    )
     print(f"Surcharge  : {cog_idx.overload}")
     print()
 
     fig = plt.figure(figsize=(14, 10))
-    gs  = gridspec.GridSpec(3, 2, figure=fig, hspace=0.45, wspace=0.3)
+    gs = gridspec.GridSpec(3, 2, figure=fig, hspace=0.45, wspace=0.3)
     fig.suptitle("Validation signal_processing.py -- signaux synthetiques", fontsize=13)
 
     ax1 = fig.add_subplot(gs[0, 0])
     ax1.plot(t_arr, ppg_signal, color="lightcoral", linewidth=0.4, alpha=0.7)
-    ax1.set_title("PPG brut"); ax1.set_ylabel("Amplitude")
+    ax1.set_title("PPG brut")
+    ax1.set_ylabel("Amplitude")
 
     ax2 = fig.add_subplot(gs[0, 1])
     filt_ppg = ppg_proc.get_filtered_signal()
     if len(filt_ppg) > 0:
-        t_filt = t_arr[-len(filt_ppg):]
+        t_filt = t_arr[-len(filt_ppg) :]
         ax2.plot(t_filt, filt_ppg, color="tab:red", linewidth=1)
         if ppg_proc.last_peaks:
             vp = [p for p in ppg_proc.last_peaks if p < len(t_filt)]
             ax2.plot(t_filt[vp], filt_ppg[vp], "x", color="darkred", markersize=8)
-    ax2.set_title(f"PPG filtre + pics (FC={ppg_proc.fc_bpm:.0f} bpm)" if ppg_proc.fc_bpm else "PPG filtre")
+    ax2.set_title(
+        f"PPG filtre + pics (FC={ppg_proc.fc_bpm:.0f} bpm)"
+        if ppg_proc.fc_bpm
+        else "PPG filtre"
+    )
     ax2.set_ylabel("Amplitude")
 
     ax3 = fig.add_subplot(gs[1, 0])
     ax3.plot(t_arr, pzt_signal, color="moccasin", linewidth=0.4, alpha=0.7)
-    ax3.set_title("PZT brut"); ax3.set_ylabel("Amplitude")
+    ax3.set_title("PZT brut")
+    ax3.set_ylabel("Amplitude")
 
     ax4 = fig.add_subplot(gs[1, 1])
     filt_pzt = pzt_proc.get_filtered_signal()
     if len(filt_pzt) > 0:
-        t_filt_p = t_arr[-len(filt_pzt):]
+        t_filt_p = t_arr[-len(filt_pzt) :]
         ax4.plot(t_filt_p, filt_pzt, color="tab:orange", linewidth=1)
         if pzt_proc.last_peaks:
             vp2 = [p for p in pzt_proc.last_peaks if p < len(t_filt_p)]
-            ax4.plot(t_filt_p[vp2], filt_pzt[vp2], "x", color="darkorange", markersize=8)
-    ax4.set_title(f"PZT filtre + pics (RR={pzt_proc.rr_rpm:.0f} rpm)" if pzt_proc.rr_rpm else "PZT filtre")
+            ax4.plot(
+                t_filt_p[vp2], filt_pzt[vp2], "x", color="darkorange", markersize=8
+            )
+    ax4.set_title(
+        f"PZT filtre + pics (RR={pzt_proc.rr_rpm:.0f} rpm)"
+        if pzt_proc.rr_rpm
+        else "PZT filtre"
+    )
     ax4.set_ylabel("Amplitude")
 
     ax5 = fig.add_subplot(gs[2, 0])
@@ -775,23 +828,37 @@ if __name__ == "__main__":
         ax5.plot(fc_ts, fc_vals, "o-", color="tab:red", markersize=4, label="FC (bpm)")
     if rr_vals:
         ax5r = ax5.twinx()
-        ax5r.plot(rr_ts, rr_vals, "s-", color="tab:orange", markersize=4, label="RR (rpm)")
+        ax5r.plot(
+            rr_ts, rr_vals, "s-", color="tab:orange", markersize=4, label="RR (rpm)"
+        )
         ax5r.set_ylabel("RR (rpm)", color="tab:orange")
     ax5.set_title("FC et RR au cours du temps")
-    ax5.set_ylabel("FC (bpm)", color="tab:red"); ax5.set_xlabel("Temps (s)")
+    ax5.set_ylabel("FC (bpm)", color="tab:red")
+    ax5.set_xlabel("Temps (s)")
 
     ax6 = fig.add_subplot(gs[2, 1])
     if icog_v:
         ax6.plot(icog_ts, icog_v, color="tab:purple", linewidth=1.5)
-        ax6.axhline(y=CognitiveLoadIndex.OVERLOAD_THRESHOLD,
-                    color="red", linestyle="--", alpha=0.7,
-                    label=f"Seuil surcharge ({CognitiveLoadIndex.OVERLOAD_THRESHOLD})")
-        ax6.fill_between(icog_ts, icog_v, CognitiveLoadIndex.OVERLOAD_THRESHOLD,
-                         where=[v > CognitiveLoadIndex.OVERLOAD_THRESHOLD for v in icog_v],
-                         color="red", alpha=0.2)
+        ax6.axhline(
+            y=CognitiveLoadIndex.OVERLOAD_THRESHOLD,
+            color="red",
+            linestyle="--",
+            alpha=0.7,
+            label=f"Seuil surcharge ({CognitiveLoadIndex.OVERLOAD_THRESHOLD})",
+        )
+        ax6.fill_between(
+            icog_ts,
+            icog_v,
+            CognitiveLoadIndex.OVERLOAD_THRESHOLD,
+            where=[v > CognitiveLoadIndex.OVERLOAD_THRESHOLD for v in icog_v],
+            color="red",
+            alpha=0.2,
+        )
     ax6.set_title("Indice composite I_cog")
-    ax6.set_ylabel("I_cog (z-score moyen)"); ax6.set_xlabel("Temps (s)")
-    ax6.legend(fontsize=8); ax6.grid(True, alpha=0.3)
+    ax6.set_ylabel("I_cog (z-score moyen)")
+    ax6.set_xlabel("Temps (s)")
+    ax6.legend(fontsize=8)
+    ax6.grid(True, alpha=0.3)
 
     plt.savefig("validation_signal_processing.png", dpi=120, bbox_inches="tight")
     print("Graphique sauvegarde : validation_signal_processing.png")

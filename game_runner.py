@@ -48,7 +48,7 @@ def patch_game(game):
             "keys_normal": [],
             "keys_chunking": [],
             "phase": "normal",
-            "session_start": time.time(),
+            "session_start": time.perf_counter(),
         }
     )
 
@@ -60,10 +60,10 @@ def patch_game(game):
         SummaryState,
     )
 
-    t0 = [time.time()]
+    t0 = [time.perf_counter()]
 
     def ts():
-        return time.time() - t0[0]
+        return time.perf_counter() - t0[0]
 
     # ── Calibration ───────────────────────────────────────────
     orig_calib = CalibrationState.update
@@ -76,7 +76,7 @@ def patch_game(game):
             d = load_ev()
             d["calib_start"] = ts()
             save_ev(d)
-            t0[0] = time.time()
+            t0[0] = time.perf_counter()
         orig_calib(self)
         if game.current_state is not self and _calib_started[0]:
             d = load_ev()

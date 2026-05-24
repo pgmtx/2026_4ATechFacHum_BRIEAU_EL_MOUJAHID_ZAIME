@@ -103,7 +103,7 @@ class ChunkyDevice(plux.SignalsDev):
         Retourne False → continue
         """
         sample = {
-            "ts": time.time(),  # horodatage Unix precis
+            "ts": time.perf_counter(),
             "nSeq": nSeq,  # numero de frame depuis le debut
             "ppg": int(data[config.IDX_PPG]),  # pouls — valeur brute 0-65535
             "pzt": int(data[config.IDX_PZT]),  # respiration — valeur brute 0-65535
@@ -116,7 +116,7 @@ class ChunkyDevice(plux.SignalsDev):
             pass  # queue pleine → on perd l echantillon plutot que de bloquer
 
         # Debug : 1 ligne par seconde dans la console
-        now = time.time()
+        now = time.perf_counter()
         if now - self._last_print >= 1.0:
             print(
                 f"[BITalino] nSeq={nSeq:6d} | "
@@ -282,7 +282,7 @@ if __name__ == "__main__":
     # input() dans un thread ne marche pas sous Windows quand matplotlib est actif
     # mpl_connect capte les touches peu importe ou est le focus
     def on_key_press(event):
-        ts = time.time() - start
+        ts = time.perf_counter() - start
         d = KEYMAP.get(event.key)
         if d:
             with key_events_lock:
@@ -293,7 +293,7 @@ if __name__ == "__main__":
     data_q = queue.Queue(maxsize=config.QUEUE_MAXSIZE)
     acq = AcquisitionThread(data_q)
     acq.start()
-    start = time.time()
+    start = time.perf_counter()
 
     # Graphique temps reel — 3 subplots
     plt.ion()

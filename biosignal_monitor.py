@@ -52,7 +52,7 @@ class ChunkyDevice(plux.SignalsDev):
 
     def onRawFrame(self, nSeq, data):
         s = {
-            "ts": time.time(),
+            "ts": time.perf_counter(),
             "ppg": int(data[config.IDX_PPG]),
             "pzt": int(data[config.IDX_PZT]),
         }
@@ -60,7 +60,7 @@ class ChunkyDevice(plux.SignalsDev):
             self.data_queue.put_nowait(s)
         except queue.Full:
             pass
-        now = time.time()
+        now = time.perf_counter()
         if now - self._last >= 2.0:
             print(f"  [BITalino] {nSeq} ppg={s['ppg']} pzt={s['pzt']}")
             self._last = now
@@ -136,8 +136,8 @@ def main():
     acq.start()
 
     print("Attente BITalino (5s)...")
-    deadline = time.time() + 5
-    while data_q.empty() and time.time() < deadline:
+    deadline = time.perf_counter() + 5
+    while data_q.empty() and time.perf_counter() < deadline:
         time.sleep(0.1)
     if data_q.empty():
         print("ERREUR : aucune donnée BITalino")
@@ -163,7 +163,7 @@ def main():
         time.sleep(0.2)
 
     # Réinitialiser le timestamp de référence
-    start = time.time()
+    start = time.perf_counter()
     while not data_q.empty():
         try:
             data_q.get_nowait()
@@ -247,11 +247,11 @@ def main():
                     _ev = json.load(_f)
                 if _ev.get("game_end") and not _ev.get("_report_done"):
                     _game_ended[0] = True
-                    _close_at[0] = time.time() + 1.0
+                    _close_at[0] = time.perf_counter() + 1.0
             except Exception:
                 pass
 
-        if _game_ended[0] and _close_at[0] and time.time() >= _close_at[0]:
+        if _game_ended[0] and _close_at[0] and time.perf_counter() >= _close_at[0]:
             if not _closing[0]:
                 _closing[0] = True
                 # Enrichir les niveaux MAINTENANT (avant que analysis.py tourne)
