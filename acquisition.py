@@ -177,7 +177,7 @@ class AcquisitionThread(threading.Thread):
         except Exception as e:
             print(f"[acquisition] ERREUR connexion BITalino : {e}")
             print("[acquisition] Verifiez :")
-            print(f"  1. BITalino allume et bluetooth actif")
+            print("  1. BITalino allume et bluetooth actif")
             print(f"  2. Adresse MAC correcte dans config.py : {config.MAC_ADDRESS}")
             print(f"  3. Ports correctement branches : {config.ACTIVE_PORTS}")
         finally:
@@ -200,8 +200,6 @@ class AcquisitionThread(threading.Thread):
 # ==============================================================
 
 if __name__ == "__main__":
-    from collections import deque
-
     import matplotlib.patches as mpatches
     import matplotlib.pyplot as plt
 

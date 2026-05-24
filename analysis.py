@@ -8,18 +8,15 @@ import os
 import sys
 import time
 
-import numpy as np
-
 _HEADLESS = os.environ.get("MPLBACKEND") == "Agg"
 if _HEADLESS:
     import matplotlib
 
     matplotlib.use("Agg")
 
-import matplotlib
-import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
-from matplotlib.lines import Line2D
+import matplotlib.pyplot as plt  # noqa: E402
+import matplotlib.ticker as ticker  # noqa: E402
+from matplotlib.lines import Line2D  # noqa: E402
 
 EVENTS_FILE = "sessions/live_events.json"
 MILLER = 5
@@ -265,9 +262,6 @@ def main():
     paths = save_figures(data, prefix)
     # Aussi garder la figure combinee pour compatibilite
     try:
-        import matplotlib.gridspec as gridspec
-        from matplotlib.lines import Line2D as L2D
-
         # Ecrire le chemin des figures dans un fichier index
         index_file = "sessions/figures_index.json"
         with open(index_file, "w") as f:

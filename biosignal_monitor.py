@@ -9,18 +9,18 @@ Basé sur acquisation_processing_.py (qui marchait).
 """
 
 import json
+import logging
 import os
 import platform
 import queue
 import sys
 import threading
 import time
-from collections import deque
 
 import numpy as np
-from scipy import signal as sp_signal
 
 import config
+from signal_processing import CognitiveLoadIndex, PPGProcessor, PZTProcessor
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 if SCRIPT_DIR not in sys.path:
@@ -94,14 +94,11 @@ class AcqThread(threading.Thread):
                 try:
                     self.device.stop()
                     self.device.close()
-                except:
-                    pass
+                except Exception as e:
+                    logging.exception(f"Closing device failed: {e}")
 
     def stop(self):
         self.stop_event.set()
-
-
-from signal_processing import CognitiveLoadIndex, PPGProcessor, PZTProcessor
 
 
 def main():
@@ -112,8 +109,8 @@ def main():
     import matplotlib.pyplot as plt
     from matplotlib.animation import FuncAnimation
 
-    for key in ["s", "q", "z", "Z", "d", "g", "p", "f", "h", "l"]:
-        for km in [
+    for key in ("s", "q", "z", "Z", "d", "g", "p", "f", "h", "l"):
+        for km in (
             "keymap.save",
             "keymap.quit",
             "keymap.zoom",
@@ -121,11 +118,11 @@ def main():
             "keymap.yscale",
             "keymap.grid",
             "keymap.pan",
-        ]:
+        ):
             try:
                 if key in matplotlib.rcParams.get(km, []):
                     matplotlib.rcParams[km].remove(key)
-            except:
+            except (ValueError, TypeError, AttributeError, KeyError):
                 pass
 
     config.validate()
@@ -158,7 +155,7 @@ def main():
         while not data_q.empty():
             try:
                 data_q.get_nowait()
-            except:
+            except queue.Empty:
                 break
         time.sleep(0.2)
 
@@ -167,7 +164,7 @@ def main():
     while not data_q.empty():
         try:
             data_q.get_nowait()
-        except:
+        except queue.Empty:
             break
     print("Calibration démarrée !")
 
@@ -288,7 +285,7 @@ def main():
         while not data_q.empty():
             try:
                 s = data_q.get_nowait()
-            except:
+            except queue.Empty:
                 break
 
             ts_rel = s["ts"] - start
@@ -602,7 +599,6 @@ def _show_final_in_fig(
 ):
     """Remplace les axes temps réel par le rapport final dans la même fenêtre."""
     import matplotlib.gridspec as gridspec
-    import matplotlib.pyplot as plt
 
     # (enrichissement déjà fait dans update() avant l'appel)
 
