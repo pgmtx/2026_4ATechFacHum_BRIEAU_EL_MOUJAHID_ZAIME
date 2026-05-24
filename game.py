@@ -155,7 +155,7 @@ class Game:
             self.current_state.draw()
             pygame.display.flip()
 
-            # self.clock.tick(self.fps)
+            self.clock.tick(self.fps)
 
 
 class State:
