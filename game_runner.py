@@ -208,7 +208,7 @@ def patch_game(game):
     orig_sum_draw = SummaryState.draw
     orig_sum_handle = SummaryState.handle_events
     _surf: list[pygame.Surface] | None = None
-    _fig_idx = [0]  # index courant galerie
+    _fig_idx = 0  # index courant galerie
 
     def new_sum_init(self: SummaryState, gr: Game):
         orig_sum_init(self, gr)
@@ -272,12 +272,12 @@ def patch_game(game):
             except Exception as e:
                 print(f"[game] Erreur chargement {fp}: {e}")
 
-        # Allows new_sum_init to assign to patch_game()'s _surf (shares state across closures)
-        nonlocal _surf
+        # Allows new_sum_init to assign to patch_game()'s _surf and _fig_idx (shares state across closures)
+        nonlocal _surf, _fig_idx
 
         if surfs:
             _surf = surfs
-            _fig_idx[0] = 0
+            _fig_idx = 0
             print(f"[game] {len(surfs)} figures chargees")
         else:
             _surf = None
@@ -298,7 +298,7 @@ def patch_game(game):
         # Titre
         scr.blit(self.title, self.title_rect)
         # Figure courante
-        idx = _fig_idx[0] % len(_surf)
+        idx = _fig_idx % len(_surf)
         surf = _surf[idx]
         x = (sw - surf.get_width()) // 2
         y = self.title_rect.bottom + 5
@@ -320,7 +320,7 @@ def patch_game(game):
     def new_sum_handle(self: SummaryState, events: list[pygame.event.Event]):
         orig_sum_handle(self, events)
 
-        nonlocal _surf
+        nonlocal _surf, _fig_idx
         for ev in events:
             if ev.type != pygame.KEYDOWN:
                 continue
@@ -329,10 +329,10 @@ def patch_game(game):
                 _surf = None
             elif ev.key in (pygame.K_RIGHT, pygame.K_d):
                 if _surf and isinstance(_surf, list):
-                    _fig_idx[0] = (_fig_idx[0] + 1) % len(_surf)
+                    _fig_idx = (_fig_idx + 1) % len(_surf)
             elif ev.key in (pygame.K_LEFT, pygame.K_q):
                 if _surf and isinstance(_surf, list):
-                    _fig_idx[0] = (_fig_idx[0] - 1) % len(_surf)
+                    _fig_idx = (_fig_idx - 1) % len(_surf)
 
     SummaryState.__init__ = new_sum_init  # pyright: ignore[reportAttributeAccessIssue]
     SummaryState.draw = new_sum_draw
