@@ -1,6 +1,6 @@
+import argparse
 import itertools
 import random
-import sys
 
 import pygame
 
@@ -104,7 +104,14 @@ class Game:
 
         ref_width, ref_height = 1280, 720
 
-        is_windowed = len(sys.argv) > 1 and sys.argv[1] == "--windowed"
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--windowed", action="store_true")
+        parser.add_argument("--state", type=str)
+
+        args = parser.parse_args()
+        is_windowed = args.windowed
+        start_state = args.state or "menu"
+
         self.width, self.height = ref_width, ref_height
         flags = 0
 
@@ -124,14 +131,14 @@ class Game:
         self.clock = pygame.time.Clock()
         self.states: dict[str, State] = {
             "menu": MenuState(self),
-            "tutorial": TutorialState(self),
+            # "tutorial": TutorialState(self),
             "calibration": CalibrationState(self),
             "game": SingleArrowState(self),
             "lost": LostState(self),
             "pre_pair": PrePairState(self),
             "pair": PairArrowState(self),
         }
-        self.current_state: State = self.states["menu"]
+        self.current_state: State = self.states[start_state]
 
     def run(self):
         is_running = True
@@ -148,7 +155,7 @@ class Game:
             self.current_state.draw()
             pygame.display.flip()
 
-            # self.clock.tick(self.fps)
+            self.clock.tick(self.fps)
 
 
 class State:
@@ -176,7 +183,11 @@ class MenuState(State):
         self.game = game
         self.title, self.title_rect = get_title(game, game.game_title.upper(), 72)
 
-        self.button_names = ("Jouer", "Tutoriel", "Quitter")
+        self.button_names = (
+            "Jouer",
+            # "Tutoriel",
+            "Quitter",
+        )
         self.button_width = int(255 * game.scale)
         self.button_height = int(76 * game.scale)
         self.buttons = create_buttons(
@@ -305,8 +316,27 @@ direction_keys = (pygame.K_LEFT, pygame.K_UP, pygame.K_RIGHT, pygame.K_DOWN)
 rotations = (0, -90, 180, 90)
 
 
-def get_random_direction() -> str:
-    return random.choice(directions)
+def pick_direction(history: list[str]) -> str:
+    # No more than two consecutive identical directions
+    if len(history) >= 2 and history[-1] == history[-2]:
+        choices = [d for d in directions if d != history[-1]]
+    else:
+        choices = directions
+    return random.choice(choices)
+
+
+def pick_pair(history: list[tuple[str, str]]) -> tuple[str, str]:
+    # No more than two consecutive identical directions (a pair of identical arrows is ok)
+    while True:
+        a = random.choice(directions)
+        b = random.choice(directions)
+
+        if history:
+            previous = history[-1][1]
+            if previous == a == b:
+                continue
+
+        return a, b
 
 
 def get_rotation_from_direction(direction: str) -> int:
@@ -319,7 +349,12 @@ def key_to_direction(key: int) -> str:
     return directions[index]
 
 
-def _make_arrow_images(size: int) -> tuple[dict, dict, dict]:
+DirectionSurfaceMap = dict[str, pygame.Surface]
+
+
+def _make_arrow_images(
+    size: int,
+) -> tuple[DirectionSurfaceMap, DirectionSurfaceMap, DirectionSurfaceMap]:
     image = pygame.image.load("assets/arrow.png").convert_alpha()
     image = pygame.transform.smoothscale(image, (size, size))
     arrow_images = {
@@ -358,7 +393,7 @@ class SingleArrowState(State):
         self.game = game
         self.title, self.title_rect = get_title(game, "JEU", 64)
         self.arrows_count = 1
-        self.arrow_directions = [get_random_direction()]
+        self.arrow_directions = [pick_direction([])]
 
         margin = 20
         spacing_const = 40
@@ -406,9 +441,6 @@ class SingleArrowState(State):
                 return
 
             mapped = key_to_direction(event.key)
-            print(
-                f"key event: {event.key} -> {pygame.key.name(event.key)} mapped to {mapped}"
-            )
             self.chosen_direction = mapped
 
     def update(self):
@@ -428,7 +460,7 @@ class SingleArrowState(State):
     def _start_next_round(self):
         self.pressed_directions = 0
         self.arrows_count += 1
-        self.arrow_directions.append(get_random_direction())
+        self.arrow_directions.append(pick_direction(self.arrow_directions))
         self.inited = False
         self.chosen_direction = None
         self.show_arrows = True
@@ -439,11 +471,7 @@ class SingleArrowState(State):
     def display_arrows_progressively(self):
         end = pygame.time.get_ticks()
         elapsed = end - self.start
-        print(
-            f"display_progress: elapsed={elapsed} total_display_duration={self.total_display_duration} arrows_count={self.arrows_count} arrows_to_show={self.arrows_to_show}"
-        )
         if elapsed > self.total_display_duration:
-            print("display_progress: switching to input phase")
             self.show_arrows = False
             self.arrows_to_show = 0
             self.chosen_direction = None
@@ -451,26 +479,19 @@ class SingleArrowState(State):
             i = min(elapsed // self.time_between_arrows, self.arrows_count)
             if self.arrows_to_show != i:
                 self.arrows_to_show = i
-                print(f"display_progress: arrows_to_show -> {self.arrows_to_show}")
 
     def handle_player_inputs(self):
         if self.chosen_direction is None:
             return
         expected = self.arrow_directions[self.pressed_directions]
         if self.chosen_direction != expected:
-            print(
-                f"MISMATCH: chosen={self.chosen_direction} expected={expected} index={self.pressed_directions} seq={self.arrow_directions}"
-            )
-            if len(self.arrow_directions) >= 7:
+            if len(self.arrow_directions) >= 5:
                 self.game.current_state = self.game.states["pre_pair"]
             else:
                 self.game.current_state = self.game.states["lost"]
             return
 
         self.pressed_directions += 1
-        print(
-            f"INPUT: correct press, pressed_directions={self.pressed_directions} arrows_count={self.arrows_count} show_arrows={self.show_arrows}"
-        )
         # consume the input so it isn't processed again on the next frame
         self.chosen_direction = None
 
@@ -492,26 +513,15 @@ class SingleArrowState(State):
             self.draw_input_phase(positions)
 
     def draw_display_phase(self, positions):
-        print(
-            f"draw display: arrows_to_show={self.arrows_to_show} positions={len(positions)} dirs={len(self.arrow_directions)}"
-        )
         it = zip(positions, self.arrow_directions)
-        for idx, (x, direction) in enumerate(itertools.islice(it, self.arrows_to_show)):
-            print(f"draw display: blitting idx={idx} direction={direction} at x={x}")
+        for x, direction in itertools.islice(it, self.arrows_to_show):
             self.game.screen.blit(self.arrow_images[direction], (x, self.square_y))
 
     def draw_input_phase(self, positions):
-        print(
-            f"draw input: pressed={self.pressed_directions} positions={len(positions)} dirs={len(self.arrow_directions)}"
-        )
         for i, (x, direction) in enumerate(zip(positions, self.arrow_directions)):
             if i >= self.pressed_directions:
                 break
-            img = self.arrow_images.get(direction) or self.arrow_images_grey.get(
-                direction
-            )
-            img = self.arrow_images_grey.get(direction, img)
-            print(f"draw input: blitting grey idx={i} direction={direction} at x={x}")
+            img = self.arrow_images_grey[direction]
             self.game.screen.blit(img, (x, self.square_y))
 
 
@@ -577,23 +587,17 @@ class PrePairState(State):
 
 
 class PairArrowState(State):
-    def __init__(self, game: Game, initial_count: int = 1) -> None:
+    def __init__(self, game: Game) -> None:
         self.game = game
         self.title, self.title_rect = get_title(game, "PAIR MODE", 64)
-
-        pair_count = max(1, initial_count // 2)
-        self.pair_directions = [
-            (get_random_direction(), get_random_direction()) for _ in range(pair_count)
-        ]
+        self.pair_directions = [pick_pair([])]
 
         margin = 40
         spacing = 24 * game.scale
         tile_size = int(128 * game.scale)
         self.tile_size = tile_size
         y = (game.height - tile_size) // 2
-        xs = _compute_centered_x_positions(
-            game.width, tile_size, pair_count, margin, spacing
-        )
+        xs = _compute_centered_x_positions(game.width, tile_size, 1, margin, spacing)
         self.tile_positions = [(x, y) for x in xs]
 
         self.arrow_size = int(48 * game.scale)
@@ -603,7 +607,7 @@ class PairArrowState(State):
 
         self.show_pairs = True
         self.start = 0
-        self.time_between_tiles = 800
+        self.time_between_tiles = 1000
         self.tiles_to_show = 0
         self.inited = False
         self.waiting_round_transition = False
@@ -618,7 +622,7 @@ class PairArrowState(State):
         return self.time_between_tiles * (len(self.pair_directions) + 1)
 
     def _start_next_round(self):
-        self.pair_directions.append((get_random_direction(), get_random_direction()))
+        self.pair_directions.append(pick_pair(self.pair_directions))
         y = (self.game.height - self.tile_size) // 2
         xs = _compute_centered_x_positions(
             self.game.width,
@@ -767,14 +771,16 @@ class PairArrowState(State):
             break
 
 
-
 class SummaryState(State):
     def __init__(self, game: Game) -> None:
         self.game = game
         # Titre positionné plus haut
         self.title, self.title_rect = create_text(
-            "RÉSUMÉ", int(64 * game.scale),
-            game.width // 2, game.height // 10, game.scale
+            "RÉSUMÉ",
+            int(64 * game.scale),
+            game.width // 2,
+            game.height // 10,
+            game.scale,
         )
         self.text, self.text_rect = create_text(
             "[afficher les graphes ici]",

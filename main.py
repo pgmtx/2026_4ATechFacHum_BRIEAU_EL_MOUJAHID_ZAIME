@@ -1,47 +1,54 @@
 """
 ChunkyMemo — main.py (architecture finale simple)
 
-Lance 2 sous-processus indépendants en parallèle :
-  1. game_runner.py   — jeu pygame pur 
-  2. biosignal_monitor.py — acquisition BITalino + graphes matplotlib 
+Launches two independent subprocesses in parallel:
+  1. game_runner.py   — the pygame game
+  2. biosignal_monitor.py — BITalino acquisition + matplotlib graphs
 
-Les deux communiquent via sessions/live_events.json :
-  - game_runner .py écrit les événements jeu (niveaux, touches, score)
-  - biosignal_monitor.py les lit pour annoter ses graphes
+Both communicate via sessions/live_events.json :
+  - game_runner .py records game events (levels, key presses, score)
+  - biosignal_monitor.py reads them to annotate its graphs
 """
 
+import json
+import logging
 import subprocess
 import sys
-import os
-import time
+from pathlib import Path
+
+LIVE_EVENT_DEFAULTS = {
+    "levels_normal": [],
+    "levels_chunking": [],
+    "keys_normal": [],
+    "keys_chunking": [],
+}
+
 
 def main():
-    os.makedirs("sessions", exist_ok=True)
-    try:
-        with open("sessions/live_events.json", "w") as f:
-            import json
-            json.dump({"levels_normal":[], "levels_chunking":[],
-                       "keys_normal":[], "keys_chunking":[]}, f)
-    except Exception:
-        pass
+    logging.basicConfig(
+        level=logging.DEBUG, format="[%(funcName)s] %(levelname)s - %(message)s"
+    )
 
-    print("[main] Démarrage ChunkyMemo")
-    print("[main] Phase 1 : Normal  →  Phase 2 : Chunking")
-    print("[main] Fenêtre JEU  → gauche  |  Fenêtre GRAPHES → bas-gauche")
-    print()
+    Path("sessions").mkdir(exist_ok=True)
+    with open("sessions/live_events.json", "w") as f:
+        json.dump(LIVE_EVENT_DEFAULTS, f)
 
-    game_proc   = subprocess.Popen([sys.executable, "game_runner.py"])
+    logging.debug("Démarrage de ChunkyMemo")
+    logging.debug("Ouverture du jeu")
+
+    game_proc = subprocess.Popen([sys.executable, "game_runner.py", *sys.argv[1:]])
+    logging.debug(f"PID du jeu : {game_proc.pid}")
+
     physio_proc = subprocess.Popen([sys.executable, "biosignal_monitor.py"])
+    logging.debug(f"PID de physio : {physio_proc.pid}")
 
-    print(f"[main] Jeu PID={game_proc.pid}  Physio PID={physio_proc.pid}")
-    print("[main] Fermez la fenêtre JEU pour terminer les deux")
+    # Makes the physio window close when we close the game
+    try:
+        game_proc.wait()
+    finally:
+        physio_proc.terminate()
+        physio_proc.wait()
 
-    # Attendre que le jeu se termine (le joueur ferme pygame)
-    game_proc.wait()
-    print("[main] Jeu terminé — biosignal_monitor reste ouvert (fermez la fenêtre matplotlib)")
-    # Attendre que biosignal_monitor se ferme tout seul (l'utilisateur ferme la fenêtre)
-    physio_proc.wait()
-    print("[main] Terminé")
 
 if __name__ == "__main__":
     main()
