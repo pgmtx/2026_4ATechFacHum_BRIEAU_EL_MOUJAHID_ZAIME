@@ -18,6 +18,8 @@ Le joueur reproduit des séquences de flèches de plus en plus longues, pendant 
 
 ## Installation
 
+Choisissez une des méthodes suivantes :
+
 ### Avec conda
 
 ```bash
@@ -32,9 +34,17 @@ pip install -r requirements.txt
 uv sync
 ```
 
+### Avec Python et pip
+
+```bash
+pip install -r requirements.txt
+```
+
 ---
 
 ## Lancement
+
+Choisissez une des méthodes suivantes :
 
 ### Avec conda
 
@@ -47,6 +57,12 @@ python main.py
 
 ```bash
 uv run main.py
+```
+
+### Avec Python et pip
+
+```bash
+python main.py
 ```
 
 ---
