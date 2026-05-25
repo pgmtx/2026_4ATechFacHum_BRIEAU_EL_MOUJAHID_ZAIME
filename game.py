@@ -131,7 +131,7 @@ class Game:
         self.clock = pygame.time.Clock()
         self.states: dict[str, State] = {
             "menu": MenuState(self),
-            "tutorial": TutorialState(self),
+            # "tutorial": TutorialState(self),
             "calibration": CalibrationState(self),
             "game": SingleArrowState(self),
             "lost": LostState(self),
@@ -183,7 +183,11 @@ class MenuState(State):
         self.game = game
         self.title, self.title_rect = get_title(game, game.game_title.upper(), 72)
 
-        self.button_names = ("Jouer", "Tutoriel", "Quitter")
+        self.button_names = (
+            "Jouer",
+            # "Tutoriel",
+            "Quitter",
+        )
         self.button_width = int(255 * game.scale)
         self.button_height = int(76 * game.scale)
         self.buttons = create_buttons(
